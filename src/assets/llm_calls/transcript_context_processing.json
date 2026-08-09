@@ -1,0 +1,15 @@
+{
+  "callName": "transcript_context_processing",
+  "timestamp": "2026-08-09T17:25:00.000Z",
+  "sessionId": "meet-persona-session-live",
+  "transcriptsCount": 1,
+  "formattedHistory": [
+    {
+      "speaker": "Device Microphone User",
+      "text": "How do we balance local-first offline storage with cloud data sync?",
+      "role": "human"
+    }
+  ],
+  "activePersona": "GetBack2Basics",
+  "userPrompt": "How do we balance local-first offline storage with cloud data sync?"
+}
