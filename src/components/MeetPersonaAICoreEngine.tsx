@@ -34,6 +34,7 @@ import type { EngineState, TranscriptEntry } from "../types";
 import { useFeedbackCollector } from "../hooks/useFeedbackCollector";
 import { useLiveSpeechRecognition } from "../hooks/useLiveSpeechRecognition";
 import { getUserApiKey, setUserApiKey, validateApiKey, isApiKeyVerifiedLocally } from "../engine/storageProxy";
+import type { ApiModel } from "../engine/storageProxy";
 
 import personaResponseGenTrace from '../assets/llm_calls/persona_response_generation.json';
 import personaAlignTrace from '../assets/llm_calls/persona_alignment_evaluation.json';
@@ -76,6 +77,10 @@ export function MeetPersonaAICoreEngine({
 
   // Real Pre-flight API Key Verification State
   const [apiKeyInput, setApiKeyInput] = useState<string>(getUserApiKey());
+  const [selectedProvider, setSelectedProvider] = useState<'openrouter' | 'gemini'>(
+    () => (localStorage.getItem('LPC_API_PROVIDER') as 'openrouter' | 'gemini') || 'gemini'
+  );
+  const [availableModels, setAvailableModels] = useState<ApiModel[]>([]);
   const [isValidatingKey, setIsValidatingKey] = useState(false);
   const [keyValidationStatus, setKeyValidationStatus] = useState<{ isValid: boolean; message: string } | null>(null);
   const keyInputRef = useRef<HTMLInputElement>(null);
@@ -103,9 +108,14 @@ export function MeetPersonaAICoreEngine({
     }
 
     setIsValidatingKey(true);
-    const result = await validateApiKey(cleanKey);
+    const result = await validateApiKey(cleanKey, selectedProvider);
     setIsValidatingKey(false);
     setKeyValidationStatus({ isValid: result.isValid, message: result.message });
+    if (result.models) {
+      setAvailableModels(result.models);
+    } else {
+      setAvailableModels([]);
+    }
   };
 
   useEffect(() => {
@@ -127,7 +137,7 @@ export function MeetPersonaAICoreEngine({
     onTranscriptAdded: onAddTranscript,
     onAutoTrigger: (spokenText) => {
       if (spokenText && spokenText.trim() && hasValidKey) {
-        setCustomPrompt(spokenText.trim());
+        setCustomPrompt((prev) => prev ? prev + " " + spokenText.trim() : spokenText.trim());
       }
     }
   });
@@ -222,68 +232,146 @@ export function MeetPersonaAICoreEngine({
 
         {/* Status, API Key Config, Model Selector & Sync Badges */}
         <div className="flex flex-wrap items-center gap-3">
-          {/* Mandatory Pre-flight API Key Verification Badge */}
-          <div className={`flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border rounded-xl text-xs transition-all ${
-            hasValidKey 
-              ? 'border-emerald-500/50 shadow-md shadow-emerald-950/40' 
-              : 'border-rose-500/70 shadow-md shadow-rose-950/40'
-          }`}>
-            <Key className={`w-4 h-4 ${hasValidKey ? 'text-emerald-400' : 'text-rose-400 animate-pulse'}`} />
-            <input
-              ref={keyInputRef}
-              type="password"
-              placeholder="Paste Gemini (AIza...) or OpenRouter (sk-or...) Key"
-              value={apiKeyInput}
-              onChange={(e) => handleApiKeyChange(e.target.value)}
-              className="bg-transparent text-zinc-100 font-mono text-xs w-56 focus:outline-none placeholder:text-zinc-500"
-            />
-            <button
-              onClick={() => handleTestAndSaveKey()}
-              disabled={isValidatingKey || !apiKeyInput.trim()}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
-                hasValidKey
-                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                  : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30'
-              }`}
-            >
-              {isValidatingKey ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : hasValidKey ? (
-                <Check className="w-3.5 h-3.5 text-white" />
-              ) : (
-                <Key className="w-3.5 h-3.5" />
-              )}
-              {isValidatingKey ? 'Testing...' : hasValidKey ? 'Verified' : 'Verify Key'}
-            </button>
+          {/* Provider Selection & API Key Config */}
+          <div className="flex flex-col gap-1">
+            <div className={`flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border rounded-xl text-xs transition-all ${
+              hasValidKey 
+                ? 'border-emerald-500/50 shadow-md shadow-emerald-950/40' 
+                : 'border-rose-500/70 shadow-md shadow-rose-950/40'
+            }`}>
+              <select
+                value={selectedProvider}
+                onChange={(e) => {
+                  const val = e.target.value as 'openrouter' | 'gemini';
+                  setSelectedProvider(val);
+                  localStorage.setItem('LPC_API_PROVIDER', val);
+                  setKeyValidationStatus(null);
+                  setUserApiKey(apiKeyInput, false); // Mark unverified when changing provider
+                }}
+                className="bg-transparent text-indigo-400 font-bold focus:outline-none cursor-pointer border-r border-zinc-700 pr-2 mr-1"
+              >
+                <option value="gemini">Gemini API</option>
+                <option value="openrouter">OpenRouter</option>
+              </select>
+              <Key className={`w-4 h-4 ${hasValidKey ? 'text-emerald-400' : 'text-rose-400 animate-pulse'}`} />
+              <input
+                ref={keyInputRef}
+                type="password"
+                placeholder={selectedProvider === 'gemini' ? "Paste Gemini Key (AIza...)" : "Paste OpenRouter Key (sk-or...)"}
+                value={apiKeyInput}
+                onChange={(e) => handleApiKeyChange(e.target.value)}
+                className="bg-transparent text-zinc-100 font-mono text-xs w-56 focus:outline-none placeholder:text-zinc-500"
+              />
+              <button
+                onClick={() => handleTestAndSaveKey()}
+                disabled={isValidatingKey || !apiKeyInput.trim()}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                  hasValidKey
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                    : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30'
+                }`}
+              >
+                {isValidatingKey ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : hasValidKey ? (
+                  <Check className="w-3.5 h-3.5 text-white" />
+                ) : (
+                  <Key className="w-3.5 h-3.5" />
+                )}
+                {isValidatingKey ? 'Testing...' : hasValidKey ? 'Verified' : 'Verify Key'}
+              </button>
+            </div>
+            {keyValidationStatus && !keyValidationStatus.isValid && (
+              <div className="text-[10px] text-rose-400 font-medium px-2 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                {keyValidationStatus.message}
+              </div>
+            )}
           </div>
 
-          {/* LLM Model Selector Dropdown with Categories */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-indigo-500/40 rounded-lg text-xs">
-            <Globe className="w-3.5 h-3.5 text-indigo-400" />
-            <select
-              value={selectedModel}
-              onChange={(e) => onSelectModel(e.target.value)}
-              className="bg-transparent text-zinc-200 font-medium focus:outline-none cursor-pointer max-w-[220px]"
-            >
-              <optgroup label="Direct Gemini API Tiers (Gemini Key)" className="bg-zinc-900 text-cyan-400 font-bold">
-                <option value="gemini-1.5-flash" className="bg-zinc-900 text-zinc-100">Gemini 1.5 Flash (Default)</option>
-                <option value="gemini-1.5-pro" className="bg-zinc-900 text-zinc-100">Gemini 1.5 Pro</option>
-              </optgroup>
-              <optgroup label="Free Tier Models (OpenRouter Key)" className="bg-zinc-900 text-emerald-400 font-bold">
-                <option value="gemma-2-9b-free" className="bg-zinc-900 text-zinc-100">Google Gemma 2 9B (Free Tier)</option>
-                <option value="deepseek-r1-free" className="bg-zinc-900 text-zinc-100">DeepSeek R1 Reasoning (Free)</option>
-                <option value="llama-3.3-70b-free" className="bg-zinc-900 text-zinc-100">Meta Llama 3.3 70B (Free)</option>
-                <option value="qwen-2.5-72b-free" className="bg-zinc-900 text-zinc-100">Qwen 2.5 72B (Free - Chinese)</option>
-              </optgroup>
-              <optgroup label="Chinese / Asian Models (OpenRouter Key)" className="bg-zinc-900 text-indigo-400 font-bold">
-                <option value="deepseek-chat" className="bg-zinc-900 text-zinc-100">DeepSeek V3 / R1 (Chinese)</option>
-                <option value="qwen-2.5-72b" className="bg-zinc-900 text-zinc-100">Alibaba Qwen 2.5 72B (Chinese)</option>
-              </optgroup>
-              <optgroup label="High Performance Models (OpenRouter Key)" className="bg-zinc-900 text-amber-400 font-bold">
-                <option value="claude-3.5-sonnet" className="bg-zinc-900 text-zinc-100">Anthropic Claude 3.5 Sonnet</option>
-                <option value="gpt-4o" className="bg-zinc-900 text-zinc-100">OpenAI GPT-4o</option>
-              </optgroup>
-            </select>
+          {/* LLM Model Selector Dropdown & Custom Input */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-indigo-500/40 rounded-lg text-xs">
+              <Globe className="w-3.5 h-3.5 text-indigo-400" />
+              <select
+                value={
+                  availableModels.length > 0 
+                    ? (availableModels.find(m => m.id === selectedModel) ? selectedModel : 'custom')
+                    : ([
+                        'gemini-1.5-flash', 'gemini-1.5-pro', 
+                        'google/gemini-2.0-flash-lite-preview-02-05:free', 'meta-llama/llama-3.1-8b-instruct:free', 'qwen/qwen-2.5-7b-instruct:free', 'google/gemma-2-9b-it:free',
+                        'deepseek/deepseek-chat', 'qwen/qwen-2.5-72b-instruct', 
+                        'anthropic/claude-3.5-sonnet', 'openai/gpt-4o'
+                      ].includes(selectedModel) ? selectedModel : 'custom')
+                }
+                onChange={(e) => {
+                  if (e.target.value === 'custom') {
+                    onSelectModel('');
+                  } else {
+                    onSelectModel(e.target.value);
+                  }
+                }}
+                className="bg-transparent text-zinc-200 font-medium focus:outline-none cursor-pointer max-w-[220px]"
+              >
+                {availableModels.length > 0 ? (
+                  <>
+                    {['Free', 'Cheap', 'Medium', 'Top', 'Gemini'].map(group => {
+                      const groupModels = availableModels.filter(m => m.group === group);
+                      if (groupModels.length === 0) return null;
+                      return (
+                        <optgroup key={group} label={`${group} Models`} className="bg-zinc-900 text-emerald-400 font-bold">
+                          {groupModels.map(m => (
+                            <option key={m.id} value={m.id} className="bg-zinc-900 text-zinc-100">{m.name}</option>
+                          ))}
+                        </optgroup>
+                      );
+                    })}
+                  </>
+                ) : (
+                  <>
+                    <optgroup label="Direct Gemini API Tiers (Gemini Key)" className="bg-zinc-900 text-cyan-400 font-bold">
+                      <option value="gemini-1.5-flash" className="bg-zinc-900 text-zinc-100">Gemini 1.5 Flash (Default)</option>
+                      <option value="gemini-1.5-pro" className="bg-zinc-900 text-zinc-100">Gemini 1.5 Pro</option>
+                    </optgroup>
+                    <optgroup label="Free Tier Models (OpenRouter Key)" className="bg-zinc-900 text-emerald-400 font-bold">
+                      <option value="google/gemini-3.5-flash-lite" className="bg-zinc-900 text-zinc-100">Gemini 3.5 Flash Lite</option>
+                      <option value="meta-llama/llama-3.1-8b-instruct:free" className="bg-zinc-900 text-zinc-100">Meta Llama 3.1 8B (Free)</option>
+                      <option value="qwen/qwen-2.5-7b-instruct:free" className="bg-zinc-900 text-zinc-100">Qwen 2.5 7B (Free)</option>
+                      <option value="google/gemma-2-9b-it:free" className="bg-zinc-900 text-zinc-100">Google Gemma 2 9B (Free)</option>
+                    </optgroup>
+                    <optgroup label="Chinese / Asian Models (OpenRouter Key)" className="bg-zinc-900 text-indigo-400 font-bold">
+                      <option value="deepseek/deepseek-chat" className="bg-zinc-900 text-zinc-100">DeepSeek V3 / R1 (Chinese)</option>
+                      <option value="qwen/qwen-2.5-72b-instruct" className="bg-zinc-900 text-zinc-100">Alibaba Qwen 2.5 72B (Chinese)</option>
+                    </optgroup>
+                    <optgroup label="High Performance Models (OpenRouter Key)" className="bg-zinc-900 text-amber-400 font-bold">
+                      <option value="anthropic/claude-3.5-sonnet" className="bg-zinc-900 text-zinc-100">Anthropic Claude 3.5 Sonnet</option>
+                      <option value="openai/gpt-4o" className="bg-zinc-900 text-zinc-100">OpenAI GPT-4o</option>
+                    </optgroup>
+                  </>
+                )}
+                <optgroup label="Custom Models" className="bg-zinc-900 text-purple-400 font-bold">
+                  <option value="custom" className="bg-zinc-900 text-zinc-100">Custom Model (Enter Ref)...</option>
+                </optgroup>
+              </select>
+            </div>
+            {(
+              availableModels.length > 0 
+                ? (!availableModels.find(m => m.id === selectedModel) || selectedModel === '')
+                : (![
+                    'gemini-1.5-flash', 'gemini-1.5-pro', 
+                    'google/gemini-2.0-flash-lite-preview-02-05:free', 'meta-llama/llama-3.1-8b-instruct:free', 'qwen/qwen-2.5-7b-instruct:free', 'google/gemma-2-9b-it:free',
+                    'deepseek/deepseek-chat', 'qwen/qwen-2.5-72b-instruct', 
+                    'anthropic/claude-3.5-sonnet', 'openai/gpt-4o'
+                  ].includes(selectedModel) || selectedModel === '')
+            ) && (
+              <input
+                type="text"
+                placeholder="e.g. qwen/qwen-2.5-72b-instruct"
+                value={selectedModel === 'custom' ? '' : selectedModel}
+                onChange={(e) => onSelectModel(e.target.value)}
+                className="bg-zinc-900 border border-indigo-500/40 rounded-lg px-3 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-indigo-400 placeholder-zinc-500"
+              />
+            )}
           </div>
 
           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-xs">
@@ -322,43 +410,7 @@ export function MeetPersonaAICoreEngine({
         </div>
       </div>
 
-      {/* MANDATORY PRE-FLIGHT API KEY TEST BANNER */}
-      {!hasValidKey && (
-        <div className="p-4 bg-rose-950/70 border border-rose-500/80 rounded-xl flex items-center justify-between flex-wrap gap-4 shadow-2xl animate-pulse">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-rose-500/20 rounded-xl text-rose-400">
-              <Lock className="w-6 h-6" />
-            </div>
-            <div>
-              <h4 className="font-extrabold text-sm text-rose-200 uppercase tracking-wider flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-rose-400" />
-                Real API Key Verification Required Before Turning Mic ON
-              </h4>
-              <p className="text-xs text-rose-300 mt-0.5 font-medium">
-                {keyValidationStatus?.message || 'Keys must start with "AIza..." (Gemini) or "sk-or-..." (OpenRouter). Click Verify Key to test.'}
-              </p>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-2">
-            <input
-              type="password"
-              placeholder="Paste Gemini (AIza...) or OpenRouter (sk-or...) Key"
-              value={apiKeyInput}
-              onChange={(e) => handleApiKeyChange(e.target.value)}
-              className="p-2.5 bg-zinc-950 border border-rose-500/70 rounded-lg text-xs text-zinc-100 font-mono w-64 focus:outline-none focus:border-rose-400 placeholder:text-zinc-500 shadow-inner"
-            />
-            <button
-              onClick={() => handleTestAndSaveKey()}
-              disabled={isValidatingKey || !apiKeyInput.trim()}
-              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-indigo-600/30 flex items-center gap-1.5"
-            >
-              {isValidatingKey ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Key className="w-4 h-4" />}
-              {isValidatingKey ? 'Pinging Provider...' : 'Verify Key'}
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Device Microphone Transcription & Control Bar */}
       <div className="p-4 bg-zinc-900/80 border border-zinc-800 rounded-xl flex flex-wrap items-center justify-between gap-4">

@@ -280,8 +280,8 @@ ${dialogueHistory}
       }
     }
 
-    // 2. OpenRouter & Free Tier Route (Supports Free Gemma 2, DeepSeek R1, Llama 3.3, Qwen 2.5, Claude 3.5, GPT-4o)
-    const openRouterModelId = selectedObj.openRouterModelId || 'google/gemma-2-9b-it:free';
+    // 2. OpenRouter & Free Tier Route (Supports Free Gemma 2, DeepSeek R1, Llama 3.3, Qwen 2.5, Claude 3.5, GPT-4o, and Custom)
+    const openRouterModelId = models.find(m => m.id === selectedModel)?.openRouterModelId || selectedModel;
     if (!responseText) {
       try {
         apiEndpointUsed = 'https://openrouter.ai/api/v1/chat/completions';
@@ -352,8 +352,9 @@ ${dialogueHistory}
     }
 
     if (!responseText) {
-      responseText = `[API KEY REQUIRED FOR ${selectedObj.name}]\n\nTo access paid models (${selectedObj.name}), please enter your OpenRouter API Key (sk-or-...) or Gemini API Key (AIza...) in the top header. You can also select "Google Gemma 2 9B (Free Tier)" to test for free!`;
-      modelUsed = `${selectedObj.name} (Key Required)`;
+      const displayModelName = models.find(m => m.id === selectedModel)?.name || selectedModel;
+      responseText = `[API KEY REQUIRED FOR ${displayModelName}]\n\nTo access paid models (${displayModelName}), please enter your OpenRouter API Key (sk-or-...) or Gemini API Key (AIza...) in the top header. You can also select "Google Gemma 2 9B (Free Tier)" to test for free!`;
+      modelUsed = `${displayModelName} (Key Required)`;
       confidenceScore = 0;
     }
 

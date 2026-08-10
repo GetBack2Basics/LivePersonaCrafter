@@ -31,38 +31,47 @@ export function setUserApiKey(key: string, isVerified: boolean = false): void {
   }
 }
 
+export interface ApiModel {
+  id: string;
+  name: string;
+  group: 'Free' | 'Cheap' | 'Medium' | 'Top' | 'Gemini';
+}
+
 /**
  * Real API Key verification test against official Gemini or OpenRouter endpoints.
- * Rejects pseudo-keys, strings without 'AIza' or 'sk-or-', and failing HTTP pings.
  */
-export async function validateApiKey(key: string): Promise<{ isValid: boolean; provider: string; message: string }> {
+export async function validateApiKey(key: string, provider: 'openrouter' | 'gemini' = 'gemini'): Promise<{ isValid: boolean; provider: string; message: string; models?: ApiModel[] }> {
   const clean = key.trim();
   if (!clean) {
     setUserApiKey('', false);
-    return { isValid: false, provider: 'None', message: 'API Key is empty. Please enter your Gemini (AIza...) or OpenRouter (sk-or-...) Key.' };
+    return { isValid: false, provider: 'None', message: `API Key is empty. Please enter your ${provider === 'gemini' ? 'Gemini' : 'OpenRouter'} Key.` };
   }
 
-  // 1. Strict Format Validation
-  const isGeminiKey = clean.startsWith('AIza');
-  const isOpenRouterKey = clean.startsWith('sk-or-');
-
-  if (!isGeminiKey && !isOpenRouterKey) {
-    setUserApiKey(clean, false);
-    return { 
-      isValid: false, 
-      provider: 'Invalid Format', 
-      message: 'Invalid API key format. Gemini keys must start with "AIza..." and OpenRouter keys must start with "sk-or-...".' 
-    };
-  }
+  // 1. Determine which API to hit based on explicit provider dropdown
+  const isGeminiProvider = provider === 'gemini';
+  const isOpenRouterProvider = provider === 'openrouter';
 
   // 2. Real Gemini API Ping Test
-  if (isGeminiKey) {
+  if (isGeminiProvider) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${clean}`;
       const res = await fetch(url);
       if (res.ok) {
+        const data = await res.json();
         setUserApiKey(clean, true);
-        return { isValid: true, provider: 'Gemini API', message: 'Gemini API Key Verified & Active (HTTP 200 OK)!' };
+        
+        let models: ApiModel[] = [];
+        if (data.models && Array.isArray(data.models)) {
+          models = data.models
+            .filter((m: any) => m.name.includes('gemini') && m.supportedGenerationMethods.includes('generateContent'))
+            .map((m: any) => ({
+              id: m.name.replace('models/', ''),
+              name: m.displayName || m.name,
+              group: 'Gemini' as const
+            }));
+        }
+        
+        return { isValid: true, provider: 'Gemini API', message: 'Gemini API Key Verified & Active (HTTP 200 OK)!', models };
       }
       const data = await res.json().catch(() => ({}));
       const errMsg = data?.error?.message || `HTTP ${res.status} Unauthorized`;
@@ -75,7 +84,7 @@ export async function validateApiKey(key: string): Promise<{ isValid: boolean; p
   }
 
   // 3. Real OpenRouter API Ping Test
-  if (isOpenRouterKey) {
+  if (isOpenRouterProvider) {
     try {
       const res = await fetch('https://openrouter.ai/api/v1/auth/key', {
         headers: { Authorization: `Bearer ${clean}` }
@@ -84,7 +93,44 @@ export async function validateApiKey(key: string): Promise<{ isValid: boolean; p
         const data = await res.json();
         const label = data?.data?.label ? ` (${data.data.label})` : '';
         setUserApiKey(clean, true);
-        return { isValid: true, provider: 'OpenRouter API', message: `OpenRouter Key Verified & Active${label} (HTTP 200 OK)!` };
+
+        // Fetch OpenRouter Models
+        let models: ApiModel[] = [];
+        try {
+          const modelsRes = await fetch('https://openrouter.ai/api/v1/models');
+          if (modelsRes.ok) {
+            const modelsData = await modelsRes.json();
+            if (modelsData.data && Array.isArray(modelsData.data)) {
+              const allModels = modelsData.data.map((m: any) => {
+                const promptPrice = parseFloat(m.pricing?.prompt || '0');
+                const completionPrice = parseFloat(m.pricing?.completion || '0');
+                const totalPrice = promptPrice + completionPrice;
+                return {
+                  id: m.id,
+                  name: m.name,
+                  price: totalPrice,
+                  isFree: m.id.endsWith(':free') || totalPrice === 0
+                };
+              });
+
+              const freeModels = allModels.filter((m: any) => m.isFree).slice(0, 3).map((m: any) => ({ ...m, group: 'Free' as const }));
+              
+              const paidModels = allModels.filter((m: any) => !m.isFree).sort((a: any, b: any) => a.price - b.price);
+              const totalPaid = paidModels.length;
+              
+              const cheapModels = paidModels.slice(0, 3).map((m: any) => ({ ...m, group: 'Cheap' as const }));
+              const topModels = paidModels.slice(totalPaid - 3).map((m: any) => ({ ...m, group: 'Top' as const }));
+              const midIndex = Math.floor(totalPaid / 2);
+              const mediumModels = paidModels.slice(midIndex, midIndex + 3).map((m: any) => ({ ...m, group: 'Medium' as const }));
+
+              models = [...freeModels, ...cheapModels, ...mediumModels, ...topModels].map(m => ({ id: m.id, name: m.name, group: m.group }));
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to fetch OpenRouter models:', e);
+        }
+
+        return { isValid: true, provider: 'OpenRouter API', message: `OpenRouter Key Verified & Active${label} (HTTP 200 OK)!`, models };
       }
       const data = await res.json().catch(() => ({}));
       const errMsg = data?.error?.message || `HTTP ${res.status} Unauthorized`;
@@ -201,6 +247,9 @@ ${fullCombinedContext || dialogueHistory}
 }
 
 export function getOpenRouterModelId(selectedModel: string): string {
+  if (selectedModel && selectedModel.includes('/')) return selectedModel;
+  
+  // Legacy fallbacks just in case there's old local state
   switch (selectedModel) {
     case 'deepseek-r1-free': return 'deepseek/deepseek-r1:free';
     case 'llama-3.3-70b-free': return 'meta-llama/llama-3.3-70b-instruct:free';
@@ -209,7 +258,8 @@ export function getOpenRouterModelId(selectedModel: string): string {
     case 'qwen-2.5-72b': return 'qwen/qwen-2.5-72b-instruct';
     case 'claude-3.5-sonnet': return 'anthropic/claude-3.5-sonnet';
     case 'gpt-4o': return 'openai/gpt-4o';
-    default: return 'google/gemma-2-9b-it:free';
+    case 'gemma-2-9b-free': return 'google/gemma-2-9b-it:free';
+    default: return selectedModel || 'google/gemini-3.5-flash-lite';
   }
 }
 
@@ -333,9 +383,10 @@ export class StorageProxy {
 
     const systemPrompt = buildSystemPrompt(persona, recentTranscripts, targetDurationSec, combinedContextText);
     const { targetWordCount, maxTokens } = calculateTargetWords(targetDurationSec);
+    const selectedProvider = localStorage.getItem('LPC_API_PROVIDER') || 'gemini';
 
     // 2. Direct Browser Fetch: Gemini API
-    if (userApiKey.startsWith('AIza') || selectedModel.startsWith('gemini')) {
+    if (selectedProvider === 'gemini') {
       try {
         const chosenModel = selectedModel.includes('pro') ? 'gemini-1.5-pro' : 'gemini-1.5-flash';
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${chosenModel}:generateContent?key=${userApiKey}`;
@@ -383,7 +434,8 @@ export class StorageProxy {
     }
 
     // 3. Direct Browser Fetch: OpenRouter API
-    const openRouterModelId = getOpenRouterModelId(selectedModel);
+    if (selectedProvider === 'openrouter') {
+      const openRouterModelId = getOpenRouterModelId(selectedModel);
     try {
       const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -426,8 +478,9 @@ export class StorageProxy {
           latencyMs: Date.now() - startTime
         };
       }
-    } catch (err: any) {
-      console.warn('OpenRouter fetch exception:', err);
+      } catch (err: any) {
+        console.warn('OpenRouter fetch exception:', err);
+      }
     }
 
     return {
