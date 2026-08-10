@@ -53,6 +53,15 @@ export async function validateApiKey(key: string, provider: 'openrouter' | 'gemi
 
   // 2. Real Gemini API Ping Test
   if (isGeminiProvider) {
+    // Strict prefix check: Gemini API keys MUST start with 'AIza'
+    if (!clean.startsWith('AIza')) {
+      setUserApiKey(clean, false);
+      return {
+        isValid: false,
+        provider: 'Gemini API',
+        message: `Invalid Gemini Key format. Gemini API keys must start with 'AIza...' — your key starts with '${clean.slice(0, 6)}'. Please visit https://aistudio.google.com/app/apikey to generate a valid key.`
+      };
+    }
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${clean}`;
       const res = await fetch(url);

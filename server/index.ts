@@ -9,7 +9,7 @@ import { LLMOrchestrator } from './llmOrchestrator';
 dotenv.config();
 
 const app = express();
-const START_PORT = parseInt(process.env.PORT || '3001', 10);
+const START_PORT = parseInt(process.env.PORT || '3005', 10);
 
 app.use(cors());
 app.use(express.json());
