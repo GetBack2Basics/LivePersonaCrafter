@@ -33,7 +33,7 @@ import {
 import type { EngineState, TranscriptEntry } from "../types";
 import { useFeedbackCollector } from "../hooks/useFeedbackCollector";
 import { useLiveSpeechRecognition } from "../hooks/useLiveSpeechRecognition";
-import { getUserApiKey, setUserApiKey, validateApiKey, isApiKeyVerifiedLocally } from "../engine/storageProxy";
+import { StorageProxy, getUserApiKey, setUserApiKey, validateApiKey, isApiKeyVerifiedLocally } from "../engine/storageProxy";
 import type { ApiModel } from "../engine/storageProxy";
 
 import personaResponseGenTrace from '../assets/llm_calls/persona_response_generation.json';
@@ -51,6 +51,8 @@ interface CoreEngineProps {
   onSelectModel: (model: string) => void;
   syncStatus?: 'LOCAL_ONLY' | 'INDEXEDDB' | 'CLOUD_SYNCED';
   isSyncing?: boolean;
+  onAddPersona?: (persona: any) => void;
+  onUpdatePersona?: (persona: any) => void;
 }
 
 export function MeetPersonaAICoreEngine({ 
@@ -63,7 +65,9 @@ export function MeetPersonaAICoreEngine({
   selectedModel,
   onSelectModel,
   syncStatus = 'INDEXEDDB',
-  isSyncing = false
+  isSyncing = false,
+  onAddPersona,
+  onUpdatePersona
 }: CoreEngineProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [customPrompt, setCustomPrompt] = useState("");
@@ -71,9 +75,22 @@ export function MeetPersonaAICoreEngine({
   const [latencyLeeway, setLatencyLeeway] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('HIGH');
   const [activeTab, setActiveTab] = useState<'MATRIX' | 'TRANSCRIPT' | 'FEEDBACK' | 'LLM_LOGS' | 'ARCH'>('MATRIX');
   const [copiedLink, setCopiedLink] = useState(false);
+  const [activeFeedbackResponseId, setActiveFeedbackResponseId] = useState<string | null>(null);
   const [newFeedbackScore, setNewFeedbackScore] = useState<number>(5);
   const [newFeedbackComment, setNewFeedbackComment] = useState("");
   const [evaluatorName, setEvaluatorName] = useState("Device Microphone Tester");
+
+  const [isAddingPersona, setIsAddingPersona] = useState(false);
+  const [isEditingPersona, setIsEditingPersona] = useState(false);
+  const [personaFormText, setPersonaFormText] = useState("");
+  const [isGeneratingPersona, setIsGeneratingPersona] = useState(false);
+  const [personaGenError, setPersonaGenError] = useState("");
+  
+  // For editing inline:
+  const [editName, setEditName] = useState("");
+  const [editRole, setEditRole] = useState("");
+  const [editBackground, setEditBackground] = useState("");
+  const [editKeyTraits, setEditKeyTraits] = useState("");
 
   // Real Pre-flight API Key Verification State
   const [apiKeyInput, setApiKeyInput] = useState<string>(getUserApiKey());
@@ -181,10 +198,11 @@ export function MeetPersonaAICoreEngine({
 
   const handleAddFeedback = (e: React.FormEvent) => {
     e.preventDefault();
-    if (state.botResponses.length === 0) return;
-    const targetResponse = state.botResponses[0];
-    onSubmitFeedback(targetResponse.responseId, evaluatorName, newFeedbackScore, newFeedbackComment);
+    if (!activeFeedbackResponseId) return;
+    onSubmitFeedback(activeFeedbackResponseId, evaluatorName, newFeedbackScore, newFeedbackComment);
     setNewFeedbackComment("");
+    setActiveFeedbackResponseId(null);
+    setActiveTab('FEEDBACK');
   };
 
   const handleCopyFeedbackLink = () => {
@@ -194,17 +212,49 @@ export function MeetPersonaAICoreEngine({
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
+  const handleGeneratePersona = async () => {
+    if (!personaFormText.trim()) return;
+    setPersonaGenError("");
+    setIsGeneratingPersona(true);
+    try {
+      const newPersona = await StorageProxy.generatePersonaFromProfile(personaFormText);
+      if (onAddPersona) {
+        onAddPersona(newPersona);
+      }
+      setPersonaFormText("");
+      setIsAddingPersona(false);
+    } catch (err: any) {
+      setPersonaGenError(err.message || "Failed to generate persona");
+    } finally {
+      setIsGeneratingPersona(false);
+    }
+  };
+
+  const handleStartEdit = () => {
+    setEditName(activePersona.name);
+    setEditRole(activePersona.role);
+    setEditBackground(activePersona.background);
+    setEditKeyTraits(activePersona.keyTraits.join(", "));
+    setIsEditingPersona(true);
+  };
+
+  const handleSaveEditPersona = () => {
+    if (!editName.trim() || !editRole.trim()) return;
+    const updated = {
+      ...activePersona,
+      name: editName,
+      role: editRole,
+      background: editBackground,
+      keyTraits: editKeyTraits.split(",").map(t => t.trim()).filter(Boolean)
+    };
+    if (onUpdatePersona) {
+      onUpdatePersona(updated);
+    }
+    setIsEditingPersona(false);
+  };
+
   const activePersona = state.activePersona;
   const latestResponse = state.botResponses.length > 0 ? state.botResponses[0] : null;
-  const isNoticeResponse = latestResponse && (
-    latestResponse.responseText.includes('[API KEY REQUIRED]') || 
-    latestResponse.responseText.includes('[REAL API KEY REQUIRED]') || 
-    latestResponse.responseText.includes('[MODEL ACCESS NOTICE]') || 
-    latestResponse.responseText.includes('[OPENROUTER API NOTICE]') ||
-    latestResponse.responseText.includes('[GEMINI API ERROR]') ||
-    latestResponse.responseText.includes('[INVALID API KEY]') ||
-    latestResponse.responseText.includes('Key Required')
-  );
 
   return (
     <div className="p-6 bg-zinc-950 border border-zinc-800 rounded-2xl text-white space-y-6 shadow-2xl">
@@ -537,30 +587,115 @@ export function MeetPersonaAICoreEngine({
                 <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                   Active Persona Target
                 </span>
-                <span className="text-xs px-2 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-md">
-                  Active Persona
-                </span>
-              </div>
-
-              <div className="flex items-center gap-3 pt-1">
-                <img
-                  src={activePersona.avatarUrl}
-                  alt={activePersona.name}
-                  className="w-12 h-12 rounded-full object-cover border-2 border-indigo-500/40"
-                />
-                <div>
-                  <h3 className="font-bold text-sm text-zinc-100">{activePersona.name}</h3>
-                  <p className="text-xs text-indigo-400 font-medium">{activePersona.role}</p>
+                <div className="flex gap-2">
+                  {!isEditingPersona && (
+                    <button 
+                      onClick={handleStartEdit}
+                      className="text-xs px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md transition-colors"
+                    >
+                      Edit Persona
+                    </button>
+                  )}
+                  <span className="text-xs px-2 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-md">
+                    Active Persona
+                  </span>
                 </div>
               </div>
 
-              <p className="text-xs text-zinc-300 leading-relaxed bg-zinc-950/60 p-2.5 rounded-lg border border-zinc-800/80">
-                {activePersona.background}
-              </p>
+              {isEditingPersona ? (
+                <div className="space-y-3 pt-1">
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    placeholder="Persona Name"
+                    className="w-full bg-zinc-950 border border-zinc-800 p-2 text-xs rounded text-zinc-100"
+                  />
+                  <input
+                    type="text"
+                    value={editRole}
+                    onChange={e => setEditRole(e.target.value)}
+                    placeholder="Role"
+                    className="w-full bg-zinc-950 border border-zinc-800 p-2 text-xs rounded text-zinc-100"
+                  />
+                  <textarea
+                    value={editBackground}
+                    onChange={e => setEditBackground(e.target.value)}
+                    placeholder="Background"
+                    rows={3}
+                    className="w-full bg-zinc-950 border border-zinc-800 p-2 text-xs rounded text-zinc-100"
+                  />
+                  <input
+                    type="text"
+                    value={editKeyTraits}
+                    onChange={e => setEditKeyTraits(e.target.value)}
+                    placeholder="Traits (comma separated)"
+                    className="w-full bg-zinc-950 border border-zinc-800 p-2 text-xs rounded text-zinc-100"
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => setIsEditingPersona(false)} className="px-3 py-1.5 bg-zinc-800 text-xs rounded text-zinc-300 hover:bg-zinc-700">Cancel</button>
+                    <button onClick={handleSaveEditPersona} className="px-3 py-1.5 bg-indigo-600 text-xs rounded text-white hover:bg-indigo-500">Save</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3 pt-1">
+                    <img
+                      src={activePersona.avatarUrl}
+                      alt={activePersona.name}
+                      className="w-12 h-12 rounded-full object-cover border-2 border-indigo-500/40"
+                    />
+                    <div>
+                      <h3 className="font-bold text-sm text-zinc-100">{activePersona.name}</h3>
+                      <p className="text-xs text-indigo-400 font-medium">{activePersona.role}</p>
+                    </div>
+                  </div>
 
-              <div>
-                <span className="text-[11px] font-semibold text-zinc-400 block mb-1.5">Persona Selector:</span>
-                <div className="space-y-1.5">
+                  <p className="text-xs text-zinc-300 leading-relaxed bg-zinc-950/60 p-2.5 rounded-lg border border-zinc-800/80">
+                    {activePersona.background}
+                  </p>
+                </>
+              )}
+
+              <div className="pt-2">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-semibold text-zinc-400">Persona Selector:</span>
+                  <button 
+                    onClick={() => setIsAddingPersona(!isAddingPersona)}
+                    className="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white px-2 py-0.5 rounded transition-colors"
+                  >
+                    {isAddingPersona ? 'Cancel' : '+ Add Persona'}
+                  </button>
+                </div>
+                
+                {isAddingPersona && (
+                  <div className="p-3 bg-zinc-950/80 rounded-lg border border-emerald-500/30 mb-3 space-y-2">
+                    <span className="text-xs text-emerald-400 font-semibold block">Generate from CV/LinkedIn text:</span>
+                    <textarea 
+                      value={personaFormText}
+                      onChange={e => setPersonaFormText(e.target.value)}
+                      placeholder="Paste CV or LinkedIn profile text here to generate a persona..."
+                      rows={4}
+                      className="w-full bg-zinc-900 border border-zinc-700 p-2 text-xs rounded text-zinc-200 resize-none focus:border-emerald-500"
+                    ></textarea>
+                    {personaGenError && (
+                      <p className="text-rose-400 text-[10px]">{personaGenError}</p>
+                    )}
+                    <button 
+                      onClick={handleGeneratePersona}
+                      disabled={isGeneratingPersona || !hasValidKey || !personaFormText.trim()}
+                      className={`w-full py-1.5 rounded text-xs font-bold transition-colors ${
+                        isGeneratingPersona || !hasValidKey || !personaFormText.trim()
+                        ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                      }`}
+                    >
+                      {isGeneratingPersona ? 'Generating (takes ~10s)...' : 'Generate Persona Profile'}
+                    </button>
+                  </div>
+                )}
+
+                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
                   {state.personas.map((p) => (
                     <button
                       key={p.id}
@@ -737,47 +872,144 @@ export function MeetPersonaAICoreEngine({
               </div>
 
               {/* Latest Generated Bot Response Output */}
-              {latestResponse && (
-                <div className="mt-4 p-4 bg-indigo-950/30 border border-indigo-500/30 rounded-xl space-y-3">
-                  {/* Topic being addressed */}
-                  <div className="p-3 bg-zinc-900 border border-indigo-500/40 rounded-xl flex items-center justify-between flex-wrap gap-2 shadow-inner">
-                    <div className="flex items-center gap-2">
-                      <HelpCircle className="w-4 h-4 text-indigo-400" />
-                      <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Topic being addressed:</span>
-                      <span className="text-xs font-extrabold text-indigo-200">
-                        {latestResponse.topicAddressed || 'Geospatial Engineering & Local Storage'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-mono font-semibold text-indigo-300 bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-500/30">
-                        {latestResponse.responseText.split(/\s+/).length} Words (~{targetDurationSec}s Speech)
-                      </span>
-                      <span className={`text-[11px] font-mono font-semibold px-2 py-0.5 rounded border ${
-                        isNoticeResponse 
-                          ? 'text-amber-400 bg-amber-950/60 border-amber-500/40'
-                          : 'text-emerald-400 bg-emerald-950/60 border-emerald-500/30'
-                      }`}>
-                        {latestResponse.alignmentConfidence}% Alignment Confidence
-                      </span>
-                    </div>
-                  </div>
+              {latestResponse && (() => {
+                // Find all responses that have the exact same prompt as the latest one, to compare models.
+                // We'll show the current one, plus any others that share the promptContext.
+                const relatedResponses = state.botResponses.filter(
+                  r => r.promptContext === latestResponse.promptContext && r.personaId === latestResponse.personaId
+                );
 
-                  {/* Direct Answer Output / Notice Block */}
-                  {isNoticeResponse ? (
-                    <div className="p-4 bg-amber-950/40 border border-amber-500/50 rounded-xl text-xs text-amber-200 leading-relaxed font-sans space-y-3">
-                      <div className="flex items-center gap-2 font-bold text-amber-300 text-sm">
-                        <AlertTriangle className="w-4 h-4 text-amber-400" />
-                        API Key Required Notice
-                      </div>
-                      <p className="whitespace-pre-wrap font-mono text-[11px] text-amber-100">{latestResponse.responseText}</p>
-                    </div>
-                  ) : (
-                    <div className="p-4 bg-zinc-950/90 rounded-xl border border-zinc-800 text-xs text-zinc-100 leading-relaxed font-sans whitespace-pre-wrap space-y-2">
-                      {latestResponse.responseText}
-                    </div>
-                  )}
-                </div>
-              )}
+                return (
+                  <div className="mt-4 space-y-4">
+                    {relatedResponses.map((response) => {
+                      const isNotice = response.responseText.includes('[API KEY REQUIRED]') || 
+                        response.responseText.includes('[REAL API KEY REQUIRED]') || 
+                        response.responseText.includes('[MODEL ACCESS NOTICE]') || 
+                        response.responseText.includes('[OPENROUTER API NOTICE]') ||
+                        response.responseText.includes('[GEMINI API ERROR]') ||
+                        response.responseText.includes('[INVALID API KEY]') ||
+                        response.responseText.includes('Key Required');
+                      
+                      const isLatest = response.responseId === latestResponse.responseId;
+
+                      return (
+                        <div key={response.responseId} className={`p-4 bg-indigo-950/30 border ${isLatest ? 'border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.2)]' : 'border-indigo-500/20 opacity-80'} rounded-xl space-y-3`}>
+                          {/* Topic being addressed */}
+                          <div className="p-3 bg-zinc-900 border border-indigo-500/40 rounded-xl flex items-center justify-between flex-wrap gap-2 shadow-inner">
+                            <div className="flex items-center gap-2">
+                              <HelpCircle className="w-4 h-4 text-indigo-400" />
+                              <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Topic being addressed:</span>
+                              <span className="text-xs font-extrabold text-indigo-200">
+                                {response.topicAddressed || 'Geospatial Engineering & Local Storage'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {response.modelUsed && (
+                                <span className="text-[11px] font-mono font-bold text-pink-300 bg-pink-950/60 px-2 py-0.5 rounded border border-pink-500/30">
+                                  Model: {response.modelUsed}
+                                </span>
+                              )}
+                              <span className="text-[11px] font-mono font-semibold text-indigo-300 bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-500/30">
+                                {response.responseText.split(/\s+/).length} Words (~{targetDurationSec}s Speech)
+                              </span>
+                              <span className={`text-[11px] font-mono font-semibold px-2 py-0.5 rounded border ${
+                                isNotice 
+                                  ? 'text-amber-400 bg-amber-950/60 border-amber-500/40'
+                                  : 'text-emerald-400 bg-emerald-950/60 border-emerald-500/30'
+                              }`}>
+                                {response.alignmentConfidence}% Alignment Confidence
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Direct Answer Output / Notice Block */}
+                          {isNotice ? (
+                            <div className="p-4 bg-amber-950/40 border border-amber-500/50 rounded-xl text-xs text-amber-200 leading-relaxed font-sans space-y-3">
+                              <div className="flex items-center gap-2 font-bold text-amber-300 text-sm">
+                                <AlertTriangle className="w-4 h-4 text-amber-400" />
+                                API Key Required Notice
+                              </div>
+                              <p className="whitespace-pre-wrap font-mono text-[11px] text-amber-100">{response.responseText}</p>
+                            </div>
+                          ) : (
+                            <div className="p-4 bg-zinc-950/90 rounded-xl border border-zinc-800 text-xs text-zinc-100 leading-relaxed font-sans whitespace-pre-wrap space-y-2">
+                              {response.responseText}
+                            </div>
+                          )}
+
+                          {/* Evaluation Action */}
+                          {!isNotice && (
+                            <div className="pt-2 border-t border-indigo-500/20">
+                              {response.feedbackSubmitted ? (
+                                <div className="text-xs text-emerald-400 font-medium flex items-center gap-1.5">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  Feedback submitted for this model's response
+                                </div>
+                              ) : activeFeedbackResponseId === response.responseId ? (
+                                <form onSubmit={handleAddFeedback} className="p-4 bg-zinc-900 border border-indigo-500/30 rounded-lg space-y-3 mt-2">
+                                  <div className="flex items-center justify-between">
+                                    <h4 className="text-xs font-bold text-zinc-200">Evaluate {response.modelUsed || 'this'} Response</h4>
+                                    <button type="button" onClick={() => setActiveFeedbackResponseId(null)} className="text-[10px] text-zinc-400 hover:text-zinc-200">Cancel</button>
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <label className="text-[11px] text-zinc-400">Evaluator Name:</label>
+                                    <input
+                                      type="text"
+                                      value={evaluatorName}
+                                      onChange={(e) => setEvaluatorName(e.target.value)}
+                                      className="w-full p-2 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 focus:outline-none focus:border-indigo-500"
+                                    />
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <label className="text-[11px] text-zinc-400">Rating (1-5 Stars):</label>
+                                    <div className="flex gap-1.5">
+                                      {[1, 2, 3, 4, 5].map((score) => (
+                                        <button
+                                          type="button"
+                                          key={score}
+                                          onClick={() => setNewFeedbackScore(score)}
+                                          className={`w-7 h-7 rounded text-[10px] font-bold transition-all ${
+                                            newFeedbackScore === score
+                                              ? 'bg-indigo-600 text-white'
+                                              : 'bg-zinc-950 border border-zinc-700 text-zinc-400 hover:text-white'
+                                          }`}
+                                        >
+                                          {score}★
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <label className="text-[11px] text-zinc-400">Comments:</label>
+                                    <textarea
+                                      value={newFeedbackComment}
+                                      onChange={(e) => setNewFeedbackComment(e.target.value)}
+                                      placeholder="How well did this capture the persona?"
+                                      rows={2}
+                                      className="w-full p-2 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 focus:outline-none focus:border-indigo-500 resize-none"
+                                    />
+                                  </div>
+                                  <button type="submit" className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold transition-all shadow-md">
+                                    Submit Evaluation
+                                  </button>
+                                </form>
+                              ) : (
+                                <button 
+                                  onClick={() => setActiveFeedbackResponseId(response.responseId)}
+                                  className="text-xs px-3 py-1.5 bg-zinc-900 border border-zinc-700 hover:border-indigo-500 text-zinc-300 hover:text-indigo-300 rounded transition-colors flex items-center gap-1.5"
+                                >
+                                  <ThumbsUp className="w-3 h-3" />
+                                  Rate this Response
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Performance Stats Cards */}
@@ -862,80 +1094,52 @@ export function MeetPersonaAICoreEngine({
 
       {/* TAB 3: HUMAN ALIGNMENT FEEDBACK FORM */}
       {activeTab === 'FEEDBACK' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <form onSubmit={handleAddFeedback} className="p-5 bg-zinc-900/60 border border-zinc-800 rounded-xl space-y-4">
+        <div className="space-y-6">
+          <div className="p-5 bg-zinc-900/60 border border-zinc-800 rounded-xl space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-sm text-zinc-100">Submit Participant Evaluation</h3>
+              <h3 className="font-bold text-sm text-zinc-100">Participant Feedback Log</h3>
               <span className="text-xs text-indigo-400">GetBack2Basics Benchmark</span>
             </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs text-zinc-400">Evaluator Name / Identifier:</label>
-              <input
-                type="text"
-                value={evaluatorName}
-                onChange={(e) => setEvaluatorName(e.target.value)}
-                className="w-full p-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-zinc-100 focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs text-zinc-400">Persona Alignment Rating (1 - 5 Stars):</label>
-              <div className="flex items-center gap-2">
-                {[1, 2, 3, 4, 5].map((score) => (
-                  <button
-                    type="button"
-                    key={score}
-                    onClick={() => setNewFeedbackScore(score)}
-                    className={`w-9 h-9 rounded-lg font-bold text-xs transition-all ${
-                      newFeedbackScore === score
-                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                        : 'bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-white'
-                    }`}
-                  >
-                    {score}★
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs text-zinc-400">Qualitative Feedback / Speech Alignment:</label>
-              <textarea
-                value={newFeedbackComment}
-                onChange={(e) => setNewFeedbackComment(e.target.value)}
-                placeholder="Does this statement match what GetBack2Basics would say or find appropriate?"
-                rows={3}
-                className="w-full p-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-zinc-100 focus:outline-none focus:border-indigo-500 resize-none font-sans"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-emerald-600/20"
-            >
-              Log Evaluation for Dataset
-            </button>
-          </form>
-
-          <div className="p-5 bg-zinc-900/60 border border-zinc-800 rounded-xl space-y-3">
-            <h3 className="font-bold text-sm text-zinc-100">Participant Feedback Log</h3>
             {state.feedbacks.length === 0 ? (
-              <p className="text-xs text-zinc-500 italic p-4 text-center">No evaluations logged yet. Ask a question and submit feedback above.</p>
+              <p className="text-xs text-zinc-500 italic p-4 text-center">No evaluations logged yet. Ask a question and submit feedback from the Matrix tab.</p>
             ) : (
-              <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
-                {state.feedbacks.map((fb) => (
-                  <div key={fb.feedbackId} className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg text-xs space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-zinc-200">{fb.evaluatorName}</span>
-                      <span className="text-emerald-400 font-bold">{fb.alignmentScore} / 5 ★</span>
+              <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1">
+                {state.feedbacks.map((fb) => {
+                  const linkedResponse = state.botResponses.find(r => r.responseId === fb.responseId);
+                  return (
+                    <div key={fb.feedbackId} className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl text-xs space-y-3">
+                      <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-zinc-200">{fb.evaluatorName}</span>
+                          <span className="text-[10px] text-zinc-500 font-mono">{new Date(fb.submittedAt).toLocaleString()}</span>
+                        </div>
+                        <span className="text-emerald-400 font-bold bg-emerald-950/30 px-2 py-1 rounded">{fb.alignmentScore} / 5 ★</span>
+                      </div>
+                      
+                      {linkedResponse && (
+                        <div className="bg-zinc-900/50 p-3 rounded-lg border border-zinc-800/80 space-y-2">
+                          <div>
+                            <span className="text-[10px] font-bold text-zinc-500 uppercase">User Prompt:</span>
+                            <p className="text-zinc-300 italic">"{linkedResponse.promptContext}"</p>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-bold text-zinc-500 uppercase">Model Used:</span>
+                            <span className="ml-2 text-[10px] font-mono font-bold text-pink-300">{linkedResponse.modelUsed || 'Unknown'}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-bold text-zinc-500 uppercase">Response Snippet:</span>
+                            <p className="text-zinc-400 mt-1 line-clamp-3">{linkedResponse.responseText}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="pt-1">
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase">Evaluator Comments:</span>
+                        <p className="text-indigo-200 font-medium mt-1">"{fb.comments}"</p>
+                      </div>
                     </div>
-                    <p className="text-zinc-400 italic">"{fb.comments}"</p>
-                    <span className="text-[10px] text-zinc-500 block font-mono">
-                      {new Date(fb.submittedAt).toLocaleTimeString()}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

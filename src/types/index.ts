@@ -45,6 +45,7 @@ export interface BotResponse {
   vocalizedAudioUrl?: string;
   alignmentConfidence: number; // 0-100%
   latencyMs: number;
+  modelUsed?: string;
   createdAt: string;
   feedbackSubmitted?: boolean;
 }

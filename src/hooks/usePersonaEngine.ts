@@ -86,6 +86,27 @@ export function usePersonaEngine() {
     });
   }, [persistState]);
 
+  const addPersona = useCallback((persona: PersonaProfile) => {
+    setState((prev) => {
+      const next = { ...prev, personas: [...prev.personas, persona], activePersona: persona };
+      persistState(next);
+      return next;
+    });
+  }, [persistState]);
+
+  const updatePersona = useCallback((updatedPersona: PersonaProfile) => {
+    setState((prev) => {
+      const updatedPersonas = prev.personas.map((p) => p.id === updatedPersona.id ? updatedPersona : p);
+      const next = { 
+        ...prev, 
+        personas: updatedPersonas,
+        activePersona: prev.activePersona.id === updatedPersona.id ? updatedPersona : prev.activePersona
+      };
+      persistState(next);
+      return next;
+    });
+  }, [persistState]);
+
   const switchActivePersona = useCallback((persona: PersonaProfile) => {
     setState((prev) => {
       const next = { ...prev, activePersona: persona };
@@ -141,6 +162,7 @@ export function usePersonaEngine() {
       topicAddressed,
       alignmentConfidence,
       latencyMs,
+      modelUsed: modelToUse,
       createdAt: new Date().toISOString(),
       feedbackSubmitted: false
     };
@@ -275,6 +297,8 @@ export function usePersonaEngine() {
     setSelectedModel: handleSetSelectedModel,
     addTranscriptEntry,
     switchActivePersona,
+    addPersona,
+    updatePersona,
     triggerPersonaResponse,
     submitFeedback,
     toggleListening,

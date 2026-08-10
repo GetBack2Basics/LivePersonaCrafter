@@ -65,6 +65,21 @@ app.post('/api/persona/response', async (req, res) => {
   }
 });
 
+// 3.5 Persona Generation Endpoint
+app.post('/api/persona/generate-from-profile', async (req, res) => {
+  try {
+    const { profileText, userApiKey } = req.body;
+    if (!profileText) {
+      return res.status(400).json({ error: 'Missing profile text' });
+    }
+    const persona = await LLMOrchestrator.generatePersonaFromProfile(profileText, userApiKey);
+    res.json({ persona });
+  } catch (error: any) {
+    console.error('Express API Persona Generation Error:', error);
+    res.status(500).json({ error: error?.message || 'Internal error generating persona' });
+  }
+});
+
 // 4. Alignment Scorer Endpoint
 app.post('/api/persona/evaluate-alignment', (req, res) => {
   const { responseText, persona, topicPrompt } = req.body;
@@ -100,6 +115,20 @@ app.post('/api/feedback', (req, res) => {
     message: `Feedback recorded for response ${responseId} with score ${alignmentScore}/5.`
   });
 });
+
+// Serve frontend static files in production
+const distPath = path.resolve(process.cwd(), 'dist');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  // Catch-all route for client-side routing
+  app.use((req, res, next) => {
+    if (!req.path.startsWith('/api/')) {
+      res.sendFile(path.join(distPath, 'index.html'));
+    } else {
+      res.status(404).json({ error: 'API route not found' });
+    }
+  });
+}
 
 /**
  * Checks if a port is in use and recursively finds the next available port.

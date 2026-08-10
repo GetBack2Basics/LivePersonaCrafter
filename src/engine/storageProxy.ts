@@ -491,4 +491,22 @@ export class StorageProxy {
       latencyMs: Date.now() - startTime
     };
   }
+
+  public static async generatePersonaFromProfile(profileText: string): Promise<PersonaProfile> {
+    const userApiKey = getUserApiKey();
+    if (!userApiKey) {
+      throw new Error('API Key required to generate persona. Please enter it in the top header.');
+    }
+    const res = await fetch('/api/persona/generate-from-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profileText, userApiKey })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Failed to generate persona: ${res.statusText}`);
+    }
+    const data = await res.json();
+    return data.persona;
+  }
 }

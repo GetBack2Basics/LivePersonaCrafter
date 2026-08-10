@@ -21,6 +21,8 @@ interface BentoGridProps {
   onSelectModel: (model: string) => void;
   syncStatus?: 'LOCAL_ONLY' | 'INDEXEDDB' | 'CLOUD_SYNCED';
   isSyncing?: boolean;
+  onAddPersona: (persona: PersonaProfile) => void;
+  onUpdatePersona: (persona: PersonaProfile) => void;
 }
 
 export function BentoGrid({ 
@@ -33,7 +35,9 @@ export function BentoGrid({
   selectedModel,
   onSelectModel,
   syncStatus,
-  isSyncing
+  isSyncing,
+  onAddPersona,
+  onUpdatePersona
 }: BentoGridProps) {
   const { activePersona, personas, transcripts, botResponses, feedbacks, stats } = state;
 
@@ -121,6 +125,8 @@ export function BentoGrid({
         onSelectModel={onSelectModel}
         syncStatus={syncStatus}
         isSyncing={isSyncing}
+        onAddPersona={onAddPersona}
+        onUpdatePersona={onUpdatePersona}
       />
 
       {/* Bottom Bento Row: Live Telemetry & Persona Knowledge Base */}

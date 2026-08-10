@@ -15,7 +15,9 @@ export function App() {
     submitFeedback,
     toggleListening,
     resetEngineState,
-    setState
+    setState,
+    addPersona,
+    updatePersona
   } = usePersonaEngine();
 
   return (
@@ -34,6 +36,8 @@ export function App() {
           onSelectModel={setSelectedModel}
           syncStatus={lastSyncStatus}
           isSyncing={isSyncing}
+          onAddPersona={addPersona}
+          onUpdatePersona={updatePersona}
         />
       </main>
     </div>
