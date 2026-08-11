@@ -1047,14 +1047,14 @@ export function MeetPersonaAICoreEngine({
                                 </span>
                               )}
                               <span className="text-[11px] font-mono font-semibold text-indigo-300 bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-500/30">
-                                {response.responseText.split(/\s+/).length} Words (~{targetDurationSec}s Speech)
+                                {isNotice ? '0 Words' : `${response.responseText.split(/\s+/).filter(Boolean).length} Words (~${targetDurationSec}s Speech)`}
                               </span>
                               <span className={`text-[11px] font-mono font-semibold px-2 py-0.5 rounded border ${
                                 isNotice 
                                   ? 'text-amber-400 bg-amber-950/60 border-amber-500/40'
                                   : 'text-emerald-400 bg-emerald-950/60 border-emerald-500/30'
                               }`}>
-                                {response.alignmentConfidence}% Alignment Confidence
+                                {isNotice ? 0 : response.alignmentConfidence}% Alignment Confidence
                               </span>
                               {/* Speak button and Voice Selector */}
                               {!isNotice && 'speechSynthesis' in window && (

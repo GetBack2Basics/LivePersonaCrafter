@@ -407,7 +407,7 @@ export class StorageProxy {
           return {
             responseText: data.responseText,
             topicAddressed: data.topicAddressed || topicAddressed,
-            alignmentConfidence: data.alignmentConfidence || 97,
+            alignmentConfidence: data.alignmentConfidence ?? 0,
             modelUsed: data.modelUsed || selectedModel,
             latencyMs: data.latencyMs || (Date.now() - startTime)
           };
@@ -420,9 +420,10 @@ export class StorageProxy {
     const systemPrompt = buildSystemPrompt(persona, recentTranscripts, targetDurationSec, combinedContextText);
     const { targetWordCount, maxTokens } = calculateTargetWords(targetDurationSec);
     const selectedProvider = localStorage.getItem('LPC_API_PROVIDER') || (userApiKey.startsWith('AIza') ? 'gemini' : 'openrouter');
+    const isExplicitGeminiModel = !selectedModel.includes('/') && (selectedModel.includes('gemini') || selectedModel === '');
 
-    // 2. Direct Browser Fetch: Gemini API
-    if (selectedProvider === 'gemini') {
+    // 2. Direct Browser Fetch: Gemini API (Only for native Gemini models)
+    if (selectedProvider === 'gemini' && isExplicitGeminiModel) {
       try {
         const chosenModel = selectedModel.includes('pro') ? 'gemini-1.5-pro' : 'gemini-1.5-flash';
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${chosenModel}:generateContent?key=${userApiKey}`;
@@ -469,18 +470,21 @@ export class StorageProxy {
       }
     }
 
-    // 3. Direct Browser Fetch: OpenRouter API
-    if (selectedProvider === 'openrouter') {
-      const openRouterModelId = getOpenRouterModelId(selectedModel);
+    // 3. Direct Browser Fetch: OpenRouter API (For OpenRouter models or fallback)
+    const openRouterModelId = getOpenRouterModelId(selectedModel);
     try {
+      const headers: any = {
+        'HTTP-Referer': 'https://meetpersona.ai',
+        'X-Title': 'MeetPersona AI',
+        'Content-Type': 'application/json'
+      };
+      if (userApiKey && userApiKey.startsWith('sk-or-')) {
+        headers['Authorization'] = `Bearer ${userApiKey}`;
+      }
+
       const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${userApiKey}`,
-          'HTTP-Referer': 'https://meetpersona.ai',
-          'X-Title': 'MeetPersona AI',
-          'Content-Type': 'application/json'
-        },
+        headers,
         body: JSON.stringify({
           model: openRouterModelId,
           messages: [
@@ -507,16 +511,15 @@ export class StorageProxy {
         const errData = await response.json().catch(() => ({}));
         const errMsg = errData?.error?.message || `HTTP ${response.status} Unauthorized`;
         return {
-          responseText: `[OPENROUTER API ERROR] ${errMsg}\n\nPlease check your OpenRouter API Key in the top header.`,
+          responseText: `[OPENROUTER API ERROR] ${errMsg}\n\nPlease check your OpenRouter API Key in the top header or select Google Gemma 2 9B (Free Tier).`,
           topicAddressed,
           alignmentConfidence: 0,
-          modelUsed: `${openRouterModelId} (API Error)`,
+          modelUsed: `${openRouterModelId} (API Notice)`,
           latencyMs: Date.now() - startTime
         };
       }
-      } catch (err: any) {
-        console.warn('OpenRouter fetch exception:', err);
-      }
+    } catch (err: any) {
+      console.warn('OpenRouter fetch exception:', err);
     }
 
     return {
