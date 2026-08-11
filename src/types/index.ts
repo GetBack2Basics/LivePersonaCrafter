@@ -72,6 +72,26 @@ export interface EngineStats {
   openRouterStatus: 'ONLINE' | 'STANDBY' | 'SIMULATED';
 }
 
+export type IssueCategory = 'BUG' | 'FEATURE' | 'ENHANCEMENT' | 'UI_UX' | 'PERFORMANCE';
+export type IssueSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export type IssueCriticality = 'P3_LOW' | 'P2_MEDIUM' | 'P1_HIGH' | 'P0_BLOCKER';
+export type IssueStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+
+export interface IssueItem {
+  id: string;
+  title: string;
+  description: string;
+  category: IssueCategory;
+  severity: IssueSeverity;
+  criticality: IssueCriticality;
+  status: IssueStatus;
+  reportedBy: string;
+  createdAt: string;
+  updatedAt: string;
+  tags: string[];
+  votes: number;
+}
+
 export interface EngineState {
   session: MeetingSession;
   personas: PersonaProfile[];
@@ -83,3 +103,4 @@ export interface EngineState {
   isListening: boolean;
   isSimulating: boolean;
 }
+

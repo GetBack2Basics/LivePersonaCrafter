@@ -1,9 +1,8 @@
 import { 
   Bot, 
-  Mic, 
-  HardDrive,
   RefreshCw,
-  HelpCircle
+  HelpCircle,
+  Bug
 } from 'lucide-react';
 import type { EngineState } from '../types';
 
@@ -11,9 +10,11 @@ interface HeaderProps {
   state: EngineState;
   onResetState: () => void;
   onOpenGuide: () => void;
+  activeTab: 'MATRIX' | 'ISSUES';
+  onTabChange: (tab: 'MATRIX' | 'ISSUES') => void;
 }
 
-export function Header({ state, onResetState, onOpenGuide }: HeaderProps) {
+export function Header({ state, onResetState, onOpenGuide, activeTab, onTabChange }: HeaderProps) {
   const { activePersona } = state;
 
   return (
@@ -43,17 +44,30 @@ export function Header({ state, onResetState, onOpenGuide }: HeaderProps) {
           </div>
         </div>
 
-        {/* Center: Live Device Ingress Status */}
-        <div className="hidden md:flex items-center gap-3 px-4 py-1.5 bg-zinc-900/80 border border-zinc-800 rounded-xl text-xs">
-          <div className="flex items-center gap-1.5 text-emerald-400">
-            <Mic className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="font-bold">Device Microphone Input</span>
-          </div>
-          <span className="text-zinc-700">|</span>
-          <div className="flex items-center gap-1 text-cyan-400">
-            <HardDrive className="w-3.5 h-3.5" />
-            <span>IndexedDB Offline Store</span>
-          </div>
+        {/* Center: Main Navigation Tabs (Matrix Core vs Bug & Feature Tracker) */}
+        <div className="flex items-center gap-1 bg-zinc-900/90 p-1 border border-zinc-800 rounded-xl text-xs font-semibold">
+          <button
+            onClick={() => onTabChange('MATRIX')}
+            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg transition-all ${
+              activeTab === 'MATRIX'
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <Bot className="w-4 h-4" />
+            Persona Core Matrix
+          </button>
+          <button
+            onClick={() => onTabChange('ISSUES')}
+            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg transition-all ${
+              activeTab === 'ISSUES'
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <Bug className="w-4 h-4 text-amber-400" />
+            Bugs & Feature Backlog
+          </button>
         </div>
 
         {/* Right: Active Persona Badge & Control Action */}
