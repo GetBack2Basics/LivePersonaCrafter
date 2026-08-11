@@ -112,7 +112,7 @@ export function MeetPersonaAICoreEngine({
   // Real Pre-flight API Key Verification State
   const [apiKeyInput, setApiKeyInput] = useState<string>(getUserApiKey());
   const [selectedProvider, setSelectedProvider] = useState<'openrouter' | 'gemini'>(
-    () => (localStorage.getItem('LPC_API_PROVIDER') as 'openrouter' | 'gemini') || 'gemini'
+    () => (localStorage.getItem('LPC_API_PROVIDER') as 'openrouter' | 'gemini') || (getUserApiKey().startsWith('AIza') ? 'gemini' : 'openrouter')
   );
   const [availableModels, setAvailableModels] = useState<ApiModel[]>([]);
   const [isValidatingKey, setIsValidatingKey] = useState(false);
@@ -194,6 +194,8 @@ export function MeetPersonaAICoreEngine({
     await startTranscription();
   };
 
+  const [promptError, setPromptError] = useState<string | null>(null);
+
   const handleTrigger = async (promptOverride?: string) => {
     if (!hasValidKey) {
       if (keyInputRef.current) {
@@ -206,11 +208,16 @@ export function MeetPersonaAICoreEngine({
       });
       return;
     }
-    const prompt = promptOverride || customPrompt || latestSpokenText || "GetBack2Basics, what is your position on comparative literature analysis and local-first systems?";
+    const promptToUse = (promptOverride || customPrompt || latestSpokenText || '').trim();
+    if (!promptToUse) {
+      setPromptError("No speech input or prompt text detected. Please speak into your microphone or type a question before asking.");
+      return;
+    }
+    setPromptError(null);
     setIsGenerating(true);
     setLastLatencyMs(null);
     const t0 = Date.now();
-    const result = await onTriggerResponse(prompt, selectedModel, targetDurationSec);
+    const result = await onTriggerResponse(promptToUse, selectedModel, targetDurationSec);
     const elapsed = Date.now() - t0;
     setLastLatencyMs(result?.latencyMs ?? elapsed);
     setIsGenerating(false);
@@ -310,7 +317,7 @@ export function MeetPersonaAICoreEngine({
     setPersonaGenError("");
     setIsGeneratingPersona(true);
     try {
-      const newPersona = await StorageProxy.generatePersonaFromProfile(personaFormText);
+      const newPersona = await StorageProxy.generatePersonaFromProfile(personaFormText, selectedModel);
       if (onAddPersona) {
         onAddPersona(newPersona);
       }
@@ -480,14 +487,14 @@ export function MeetPersonaAICoreEngine({
                 ) : (
                   <>
                     <optgroup label="Direct Gemini API Tiers (Gemini Key)" className="bg-zinc-900 text-cyan-400 font-bold">
-                      <option value="gemini-1.5-flash" className="bg-zinc-900 text-zinc-100">Gemini 1.5 Flash (Default)</option>
+                      <option value="gemini-1.5-flash" className="bg-zinc-900 text-zinc-100">Gemini 1.5 Flash</option>
                       <option value="gemini-1.5-pro" className="bg-zinc-900 text-zinc-100">Gemini 1.5 Pro</option>
                     </optgroup>
                     <optgroup label="Free Tier Models (OpenRouter Key)" className="bg-zinc-900 text-emerald-400 font-bold">
+                      <option value="google/gemma-2-9b-it:free" className="bg-zinc-900 text-zinc-100">Google Gemma 2 9B (Free - Default)</option>
                       <option value="google/gemini-3.5-flash-lite" className="bg-zinc-900 text-zinc-100">Gemini 3.5 Flash Lite</option>
                       <option value="meta-llama/llama-3.1-8b-instruct:free" className="bg-zinc-900 text-zinc-100">Meta Llama 3.1 8B (Free)</option>
                       <option value="qwen/qwen-2.5-7b-instruct:free" className="bg-zinc-900 text-zinc-100">Qwen 2.5 7B (Free)</option>
-                      <option value="google/gemma-2-9b-it:free" className="bg-zinc-900 text-zinc-100">Google Gemma 2 9B (Free)</option>
                     </optgroup>
                     <optgroup label="Chinese / Asian Models (OpenRouter Key)" className="bg-zinc-900 text-indigo-400 font-bold">
                       <option value="deepseek/deepseek-chat" className="bg-zinc-900 text-zinc-100">DeepSeek V3 / R1 (Chinese)</option>
@@ -922,12 +929,21 @@ export function MeetPersonaAICoreEngine({
                 </label>
                 <textarea
                   value={customPrompt}
-                  onChange={(e) => setCustomPrompt(e.target.value)}
+                  onChange={(e) => {
+                    setCustomPrompt(e.target.value);
+                    if (promptError) setPromptError(null);
+                  }}
                   placeholder={hasValidKey ? `Speak into your device microphone or enter a detailed technical topic for ${activePersona.name}...` : 'API Key verification required before entering questions...'}
                   disabled={!hasValidKey}
                   rows={3}
                   className="w-full p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none focus:border-indigo-500/70 transition-all placeholder:text-zinc-600 resize-none font-sans font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 />
+                {promptError && (
+                  <p className="text-xs text-rose-400 font-medium flex items-center gap-1.5 pt-0.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                    {promptError}
+                  </p>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3">

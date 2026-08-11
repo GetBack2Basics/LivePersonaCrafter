@@ -3,6 +3,7 @@ import { Header } from './components/Header';
 import { BentoGrid } from './components/BentoGrid';
 import { IssueTrackerPage } from './components/IssueTrackerPage';
 import { HowToUseGuide } from './components/HowToUseGuide';
+import { Footer } from './components/Footer';
 import { usePersonaEngine } from './hooks/usePersonaEngine';
 
 export function App() {
@@ -27,7 +28,7 @@ export function App() {
   const [activeMainTab, setActiveMainTab] = useState<'MATRIX' | 'ISSUES'>('MATRIX');
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans pb-12 selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans flex flex-col selection:bg-indigo-500 selection:text-white">
       <Header
         state={state}
         onResetState={resetEngineState}
@@ -35,7 +36,7 @@ export function App() {
         activeTab={activeMainTab}
         onTabChange={setActiveMainTab}
       />
-      <main>
+      <main className="flex-1">
         {activeMainTab === 'MATRIX' ? (
           <BentoGrid
             state={state}
@@ -56,6 +57,7 @@ export function App() {
           <IssueTrackerPage />
         )}
       </main>
+      <Footer />
       <HowToUseGuide isOpen={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
     </div>
   );

@@ -16,7 +16,7 @@ export function usePersonaEngine() {
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncStatus, setLastSyncStatus] = useState<'LOCAL_ONLY' | 'INDEXEDDB' | 'CLOUD_SYNCED'>('INDEXEDDB');
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-1.5-flash');
+  const [selectedModel, setSelectedModel] = useState<string>('google/gemma-2-9b-it:free');
 
   // Hydrate state from IndexedDB on initial mount only if personas match GetBack2Basics
   useEffect(() => {

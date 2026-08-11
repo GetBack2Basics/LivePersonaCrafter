@@ -247,7 +247,8 @@ ${fullCombinedContext || dialogueHistory}
 }
 
 export function getOpenRouterModelId(selectedModel: string): string {
-  if (selectedModel && selectedModel.includes('/')) return selectedModel;
+  if (!selectedModel) return 'google/gemma-2-9b-it:free';
+  if (selectedModel.includes('/')) return selectedModel;
   
   // Legacy fallbacks just in case there's old local state
   switch (selectedModel) {
@@ -259,7 +260,9 @@ export function getOpenRouterModelId(selectedModel: string): string {
     case 'claude-3.5-sonnet': return 'anthropic/claude-3.5-sonnet';
     case 'gpt-4o': return 'openai/gpt-4o';
     case 'gemma-2-9b-free': return 'google/gemma-2-9b-it:free';
-    default: return selectedModel || 'google/gemini-3.5-flash-lite';
+    case 'gemini-1.5-flash':
+    case 'gemini-1.5-pro':
+    default: return 'google/gemma-2-9b-it:free';
   }
 }
 
@@ -332,7 +335,7 @@ export class StorageProxy {
     persona: PersonaProfile,
     contextPrompt: string,
     recentTranscripts: TranscriptEntry[],
-    selectedModel: string = 'gemini-1.5-flash',
+    selectedModel: string = 'google/gemma-2-9b-it:free',
     targetDurationSec: number = 45
   ): Promise<{ responseText: string; topicAddressed: string; alignmentConfidence: number; modelUsed?: string; latencyMs: number }> {
     const startTime = Date.now();
@@ -344,6 +347,16 @@ export class StorageProxy {
         topicAddressed: 'API Key Verification Required',
         alignmentConfidence: 0,
         modelUsed: 'API Key Required',
+        latencyMs: Date.now() - startTime
+      };
+    }
+
+    if (!contextPrompt || !contextPrompt.trim()) {
+      return {
+        responseText: "[NO INPUT DETECTED] No spoken microphone transcript or text prompt was provided. Please speak into the microphone or enter a prompt before asking.",
+        topicAddressed: 'No Input Detected',
+        alignmentConfidence: 0,
+        modelUsed: 'No Input',
         latencyMs: Date.now() - startTime
       };
     }
@@ -383,7 +396,7 @@ export class StorageProxy {
 
     const systemPrompt = buildSystemPrompt(persona, recentTranscripts, targetDurationSec, combinedContextText);
     const { targetWordCount, maxTokens } = calculateTargetWords(targetDurationSec);
-    const selectedProvider = localStorage.getItem('LPC_API_PROVIDER') || 'gemini';
+    const selectedProvider = localStorage.getItem('LPC_API_PROVIDER') || (userApiKey.startsWith('AIza') ? 'gemini' : 'openrouter');
 
     // 2. Direct Browser Fetch: Gemini API
     if (selectedProvider === 'gemini') {
@@ -492,21 +505,127 @@ export class StorageProxy {
     };
   }
 
-  public static async generatePersonaFromProfile(profileText: string): Promise<PersonaProfile> {
+  public static async generatePersonaFromProfile(profileText: string, selectedModel: string = 'google/gemma-2-9b-it:free'): Promise<PersonaProfile> {
     const userApiKey = getUserApiKey();
     if (!userApiKey) {
-      throw new Error('API Key required to generate persona. Please enter it in the top header.');
+      throw new Error('API Key required to generate persona. Please enter it in the top header and click Verify.');
     }
-    const res = await fetch('/api/persona/generate-from-profile', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profileText, userApiKey })
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `Failed to generate persona: ${res.statusText}`);
+
+    const cleanProfile = (profileText || '').trim();
+    if (!cleanProfile || cleanProfile.length < 20 || cleanProfile.split(/\s+/).length < 4) {
+      throw new Error('Insufficient profile details. Please provide a detailed bio, CV, or LinkedIn text (at least 20 characters and multiple words) to generate a persona profile.');
     }
-    const data = await res.json();
-    return data.persona;
+
+    // 1. Try Express backend API first
+    try {
+      const res = await fetch('/api/persona/generate-from-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileText: cleanProfile, userApiKey })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.persona) return data.persona;
+      }
+    } catch (e) {
+      console.warn('Backend proxy persona generation error, attempting direct client fetch:', e);
+    }
+
+    // 2. Client-side fallback for Vite dev mode (prevents 502 Bad Gateway)
+    const selectedProvider = localStorage.getItem('LPC_API_PROVIDER') || (userApiKey.startsWith('AIza') ? 'gemini' : 'openrouter');
+    
+    const systemPrompt = `You are an expert HR analyst and Persona Crafter. Your job is to read a user's pasted CV, LinkedIn profile text, or bio, and extract a rich persona profile from it. You MUST output ONLY valid JSON matching this TypeScript interface exactly, with no markdown formatting around it (no \`\`\`json):
+{
+  "id": "string (generate a unique lowercase dash-separated id)",
+  "name": "string (person's name)",
+  "role": "string (their primary job title or role)",
+  "avatarUrl": "string (use a placeholder like https://api.dicebear.com/7.x/avataaars/svg?seed=Name)",
+  "background": "string (1-2 sentences summarizing their background)",
+  "tone": "string (e.g. professional, enthusiastic, analytical)",
+  "speechPattern": "string (e.g. uses industry jargon, concise, eloquent)",
+  "sampleQuotes": ["string", "string"],
+  "keyTraits": ["string", "string"],
+  "systemPrompt": "string (A detailed system prompt instructing an LLM on how to act as this person, including their biases, knowledge areas, and personality.)"
+}
+
+CRITICAL REQUIREMENT: If the provided profile text is too brief, trivial, nonsensical, or lacks sufficient background details to extract a specific persona, DO NOT invent a fictional persona named 'John Doe' or default software engineer. Instead, output ONLY a JSON object with an error key:
+{ "error": "Insufficient details provided in profile text to generate a persona profile. Please provide a detailed bio, CV, or role description." }`;
+
+    let jsonText = '';
+
+    // Path A: Gemini API Direct
+    if (selectedProvider === 'gemini') {
+      const chosenModel = selectedModel.includes('pro') ? 'gemini-1.5-pro' : 'gemini-1.5-flash';
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${chosenModel}:generateContent?key=${userApiKey}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            { parts: [{ text: `${systemPrompt}\n\nPROFILE TEXT:\n${profileText}` }] }
+          ],
+          generationConfig: { temperature: 0.2 }
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        const errMsg = errData?.error?.message || `HTTP ${response.status} ${response.statusText}`;
+        throw new Error(`Gemini persona generation failed: ${errMsg}`);
+      }
+
+      const data = await response.json();
+      jsonText = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '{}';
+    }
+
+    // Path B: OpenRouter API Direct
+    if (selectedProvider === 'openrouter') {
+      const openRouterModelId = getOpenRouterModelId(selectedModel);
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${userApiKey}`,
+          'HTTP-Referer': 'https://meetpersona.ai',
+          'X-Title': 'MeetPersona AI',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: openRouterModelId,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `PROFILE TEXT:\n${profileText}` }
+          ],
+          max_tokens: 1200,
+          temperature: 0.2
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        const errMsg = errData?.error?.message || `HTTP ${response.status} ${response.statusText}`;
+        throw new Error(`OpenRouter persona generation failed: ${errMsg}`);
+      }
+
+      const data = await response.json();
+      jsonText = data?.choices?.[0]?.message?.content?.trim() || '{}';
+    }
+
+    if (!jsonText || jsonText === '{}') {
+      throw new Error('Persona generation returned empty response. Please check your API key and try again.');
+    }
+
+    jsonText = jsonText.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+    const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) jsonText = jsonMatch[0];
+
+    const parsed = JSON.parse(jsonText);
+    if (parsed.error) {
+      throw new Error(parsed.error);
+    }
+    if (!parsed.name || (parsed.name.toLowerCase().includes('john doe') && !cleanProfile.toLowerCase().includes('john doe'))) {
+      throw new Error('The profile text did not contain enough details to extract a specific persona. Please provide a more detailed bio or CV.');
+    }
+    parsed.createdAt = new Date().toISOString();
+    return parsed as PersonaProfile;
   }
 }

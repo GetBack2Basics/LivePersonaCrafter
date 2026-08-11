@@ -282,7 +282,11 @@ ${dialogueHistory}
     }
 
     // 2. OpenRouter & Free Tier Route (Supports Free Gemma 2, DeepSeek R1, Llama 3.3, Qwen 2.5, Claude 3.5, GPT-4o, and Custom)
-    const openRouterModelId = models.find(m => m.id === selectedModel)?.openRouterModelId || selectedModel;
+    const foundModel = models.find(m => m.id === selectedModel);
+    let openRouterModelId = foundModel?.openRouterModelId || (selectedModel.includes('/') ? selectedModel : '');
+    if (!openRouterModelId) {
+      openRouterModelId = 'google/gemma-2-9b-it:free';
+    }
     if (!responseText) {
       try {
         apiEndpointUsed = 'https://openrouter.ai/api/v1/chat/completions';
@@ -412,7 +416,12 @@ ${dialogueHistory}
     profileText: string,
     userProvidedApiKey?: string
   ): Promise<PersonaProfile> {
-    const selectedProvider = userProvidedApiKey?.startsWith('sk-or-') ? 'openrouter' : 'gemini';
+    const cleanProfile = (profileText || '').trim();
+    if (!cleanProfile || cleanProfile.length < 20 || cleanProfile.split(/\s+/).length < 4) {
+      throw new Error('Insufficient profile details. Please provide a detailed bio, CV, or LinkedIn text (at least 20 characters and multiple words) to generate a persona profile.');
+    }
+
+    const selectedProvider = userProvidedApiKey?.startsWith('AIza') ? 'gemini' : 'openrouter';
     const apiKey = userProvidedApiKey;
 
     if (!apiKey) {
@@ -431,7 +440,10 @@ ${dialogueHistory}
   "sampleQuotes": ["string", "string"],
   "keyTraits": ["string", "string"],
   "systemPrompt": "string (A detailed system prompt instructing an LLM on how to act as this person, including their biases, knowledge areas, and personality.)"
-}`;
+}
+
+CRITICAL REQUIREMENT: If the provided profile text is too brief, trivial, nonsensical, or lacks sufficient background details to extract a specific persona, DO NOT invent a fictional persona named 'John Doe' or default software engineer. Instead, output ONLY a JSON object with an error key:
+{ "error": "Insufficient details provided in profile text to generate a persona profile. Please provide a detailed bio, CV, or role description." }`;
 
     let jsonText = '';
 
@@ -470,7 +482,7 @@ ${dialogueHistory}
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'meta-llama/llama-3.1-8b-instruct:free',
+          model: 'google/gemma-2-9b-it:free',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: `PROFILE TEXT:\n${profileText}` }
@@ -502,6 +514,12 @@ ${dialogueHistory}
     if (jsonMatch) jsonText = jsonMatch[0];
 
     const parsed = JSON.parse(jsonText);
+    if (parsed.error) {
+      throw new Error(parsed.error);
+    }
+    if (!parsed.name || (parsed.name.toLowerCase().includes('john doe') && !cleanProfile.toLowerCase().includes('john doe'))) {
+      throw new Error('The profile text did not contain enough details to extract a specific persona. Please provide a more detailed bio or CV.');
+    }
     parsed.createdAt = new Date().toISOString();
     return parsed as PersonaProfile;
   }

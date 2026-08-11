@@ -34,8 +34,16 @@ function getBackendPort(): number {
 
 const devPort = await findFreePort(3005);
 
+// Format timestamp as YYYYMMDDhhmm (e.g., 202608090828)
+const now = new Date();
+const pad = (n: number) => n.toString().padStart(2, '0');
+const buildTimeStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`;
+
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __BUILD_TIME__: JSON.stringify(buildTimeStr),
+  },
   plugins: [react()],
   server: {
     port: devPort,

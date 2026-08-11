@@ -44,7 +44,7 @@ app.post('/api/persona/response', async (req, res) => {
       persona,
       contextPrompt,
       recentTranscripts || [],
-      selectedModel || 'gemini-1.5-flash',
+      selectedModel || 'google/gemma-2-9b-it:free',
       targetDurationSec || 45,
       userApiKey
     );
