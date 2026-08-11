@@ -1074,7 +1074,7 @@ export function MeetPersonaAICoreEngine({
                                     </select>
                                   )}
 
-                                  <div className="flex items-center gap-1 border-l border-zinc-800 pl-1.5 text-[10px] text-zinc-400">
+                                  <div className="flex items-center gap-1.5 border-l border-zinc-800 pl-1.5 text-[10px] text-zinc-400">
                                     <span title="Speech Speed Rate">Speed:</span>
                                     <select
                                       value={speechRate}
@@ -1087,6 +1087,17 @@ export function MeetPersonaAICoreEngine({
                                       <option value="1.0">1.0x</option>
                                       <option value="1.1">1.1x</option>
                                       <option value="1.2">1.2x</option>
+                                    </select>
+
+                                    <span title="Speech Pitch" className="ml-1">Pitch:</span>
+                                    <select
+                                      value={speechPitch}
+                                      onChange={(e) => setSpeechPitch(parseFloat(e.target.value))}
+                                      className="bg-zinc-900 text-zinc-300 rounded text-[10px] border border-zinc-800 focus:outline-none"
+                                    >
+                                      <option value="0.8">Low (0.8)</option>
+                                      <option value="1.0">Normal (1.0)</option>
+                                      <option value="1.2">High (1.2)</option>
                                     </select>
                                   </div>
                                 </div>
