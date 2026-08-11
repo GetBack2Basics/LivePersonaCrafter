@@ -7,6 +7,7 @@ const KEY_VERIFIED_STORAGE_KEY = 'MEET_PERSONA_KEY_VERIFIED_V1';
 
 export function getUserApiKey(): string {
   try {
+    if (typeof localStorage === 'undefined') return '';
     return (localStorage.getItem(USER_API_KEY_STORAGE_KEY) || '').trim();
   } catch {
     return '';
@@ -15,6 +16,7 @@ export function getUserApiKey(): string {
 
 export function isApiKeyVerifiedLocally(): boolean {
   try {
+    if (typeof localStorage === 'undefined') return false;
     return localStorage.getItem(KEY_VERIFIED_STORAGE_KEY) === 'true';
   } catch {
     return false;
@@ -23,11 +25,12 @@ export function isApiKeyVerifiedLocally(): boolean {
 
 export function setUserApiKey(key: string, isVerified: boolean = false): void {
   try {
+    if (typeof localStorage === 'undefined') return;
     const clean = key.trim();
     localStorage.setItem(USER_API_KEY_STORAGE_KEY, clean);
     localStorage.setItem(KEY_VERIFIED_STORAGE_KEY, isVerified ? 'true' : 'false');
   } catch (e) {
-    console.error('Failed to save user API Key:', e);
+    console.warn('Failed to save user API Key:', e);
   }
 }
 
@@ -198,6 +201,26 @@ export function calculateTargetWords(durationSec: number): { targetWordCount: nu
   if (durationSec <= 60) return { targetWordCount: 200, maxTokens: 850 };
   if (durationSec <= 90) return { targetWordCount: 300, maxTokens: 1200 };
   return { targetWordCount: 420, maxTokens: 1700 };
+}
+
+export function calculateClientAlignmentScore(responseText: string, persona: PersonaProfile, targetDurationSec: number = 45): number {
+  if (!responseText || responseText.includes('[API KEY REQUIRED]') || responseText.includes('[API ERROR]')) return 0;
+  const textLower = responseText.toLowerCase();
+  let matchedCount = 0;
+  if (persona.keyTraits && Array.isArray(persona.keyTraits)) {
+    for (const trait of persona.keyTraits) {
+      const words = trait.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+      if (words.some(w => textLower.includes(w))) matchedCount++;
+    }
+  }
+  const { targetWordCount } = calculateTargetWords(targetDurationSec);
+  const actualWords = responseText.split(/\s+/).filter(Boolean).length;
+  const lengthRatio = Math.min(actualWords / Math.max(targetWordCount, 1), 1.2);
+  const lengthScore = Math.min(Math.max(lengthRatio * 40, 10), 40);
+  const totalTraits = persona.keyTraits?.length || 1;
+  const traitScore = Math.min((matchedCount / totalTraits) * 40, 40);
+  const relevanceScore = textLower.length > 50 ? 20 : 10;
+  return Math.max(Math.min(Math.round(lengthScore + traitScore + relevanceScore), 99), 65);
 }
 
 export function buildSystemPrompt(
@@ -425,7 +448,7 @@ export class StorageProxy {
             return {
               responseText: text,
               topicAddressed,
-              alignmentConfidence: 96,
+              alignmentConfidence: calculateClientAlignmentScore(text, persona, targetDurationSec),
               modelUsed: `Gemini (${chosenModel})`,
               latencyMs: Date.now() - startTime
             };
@@ -475,7 +498,7 @@ export class StorageProxy {
           return {
             responseText: text,
             topicAddressed,
-            alignmentConfidence: 95,
+            alignmentConfidence: calculateClientAlignmentScore(text, persona, targetDurationSec),
             modelUsed: `OpenRouter (${openRouterModelId})`,
             latencyMs: Date.now() - startTime
           };

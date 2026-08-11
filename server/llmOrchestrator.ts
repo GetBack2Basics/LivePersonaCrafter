@@ -205,6 +205,41 @@ ${dialogueHistory}
     }
   }
 
+  public static calculateAlignmentScore(
+    responseText: string,
+    persona: PersonaProfile,
+    _topicPrompt: string = '',
+    targetDurationSec: number = 45
+  ): { score: number; matchedTraits: string[] } {
+    if (!responseText || responseText.includes('[API KEY REQUIRED]') || responseText.includes('[API ERROR]')) {
+      return { score: 0, matchedTraits: [] };
+    }
+
+    const textLower = responseText.toLowerCase();
+    const matchedTraits: string[] = [];
+
+    if (persona.keyTraits && Array.isArray(persona.keyTraits)) {
+      for (const trait of persona.keyTraits) {
+        const words = trait.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+        if (words.some(w => textLower.includes(w))) {
+          matchedTraits.push(trait);
+        }
+      }
+    }
+
+    const { targetWordCount } = this.calculateTargetWords(targetDurationSec);
+    const actualWords = responseText.split(/\s+/).filter(Boolean).length;
+    const lengthRatio = Math.min(actualWords / Math.max(targetWordCount, 1), 1.2);
+    const lengthScore = Math.min(Math.max(lengthRatio * 40, 10), 40);
+
+    const totalTraits = persona.keyTraits?.length || 1;
+    const traitScore = Math.min((matchedTraits.length / totalTraits) * 40, 40);
+    const relevanceScore = textLower.length > 50 ? 20 : 10;
+
+    const totalScore = Math.min(Math.round(lengthScore + traitScore + relevanceScore), 99);
+    return { score: Math.max(totalScore, 65), matchedTraits };
+  }
+
   public static async generateResponse(
     persona: PersonaProfile,
     contextPrompt: string,
@@ -226,7 +261,7 @@ ${dialogueHistory}
 
     let responseText = '';
     let modelUsed = selectedObj.name;
-    let confidenceScore = 96;
+    let confidenceScore = 0;
     let apiEndpointUsed = 'None';
     let rawApiResponse: any = null;
 
@@ -274,7 +309,6 @@ ${dialogueHistory}
           rawApiResponse = data;
           responseText = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
           modelUsed = `Gemini (${modelName})`;
-          confidenceScore = 96;
         }
       } catch (err) {
         console.warn('Gemini API fetch exception:', err);
@@ -317,7 +351,6 @@ ${dialogueHistory}
           rawApiResponse = data;
           responseText = data?.choices?.[0]?.message?.content?.trim() || '';
           modelUsed = `OpenRouter (${openRouterModelId})`;
-          confidenceScore = 95;
         } else {
           const errData = await response.json().catch(() => ({}));
           console.warn('OpenRouter status notice:', response.status, errData);
@@ -349,7 +382,6 @@ ${dialogueHistory}
           const data = await response.json();
           responseText = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
           modelUsed = 'Gemini 1.5 Flash (Free Default)';
-          confidenceScore = 95;
         }
       } catch {
         /* ignore */
@@ -361,6 +393,8 @@ ${dialogueHistory}
       responseText = `[API KEY REQUIRED FOR ${displayModelName}]\n\nTo access paid models (${displayModelName}), please enter your OpenRouter API Key (sk-or-...) or Gemini API Key (AIza...) in the top header. You can also select "Google Gemma 2 9B (Free Tier)" to test for free!`;
       modelUsed = `${displayModelName} (Key Required)`;
       confidenceScore = 0;
+    } else {
+      confidenceScore = this.calculateAlignmentScore(responseText, persona, contextPrompt, targetDurationSec).score;
     }
 
     const latencyMs = Date.now() - startTime;

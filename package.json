@@ -10,6 +10,7 @@
     "build": "tsc -b && vite build && npm run build:server",
     "start": "node dist/server.cjs",
     "lint": "oxlint",
+    "test": "tsx src/tests/personaEngine.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {
