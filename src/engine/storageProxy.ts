@@ -53,15 +53,6 @@ export async function validateApiKey(key: string, provider: 'openrouter' | 'gemi
 
   // 2. Real Gemini API Ping Test
   if (isGeminiProvider) {
-    // Strict prefix check: Gemini API keys MUST start with 'AIza'
-    if (!clean.startsWith('AIza')) {
-      setUserApiKey(clean, false);
-      return {
-        isValid: false,
-        provider: 'Gemini API',
-        message: `Invalid Gemini Key format. Gemini API keys must start with 'AIza...' — your key starts with '${clean.slice(0, 6)}'. Please visit https://aistudio.google.com/app/apikey to generate a valid key.`
-      };
-    }
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${clean}`;
       const res = await fetch(url);
@@ -347,9 +338,9 @@ export class StorageProxy {
     const startTime = Date.now();
     const userApiKey = getUserApiKey();
 
-    if (!userApiKey || (!userApiKey.startsWith('AIza') && !userApiKey.startsWith('sk-or-'))) {
+    if (!userApiKey) {
       return {
-        responseText: `[REAL API KEY REQUIRED]\n\nPlease enter a valid Gemini API Key (starting with 'AIza...') or OpenRouter Key (starting with 'sk-or-...') in the top header and click 'Verify Key' to unlock live AI persona responses.`,
+        responseText: `[REAL API KEY REQUIRED]\n\nPlease enter a valid Gemini API Key or OpenRouter Key (starting with 'sk-or-...') in the top header and click 'Verify Key' to unlock live AI persona responses.`,
         topicAddressed: 'API Key Verification Required',
         alignmentConfidence: 0,
         modelUsed: 'API Key Required',
@@ -493,7 +484,7 @@ export class StorageProxy {
     }
 
     return {
-      responseText: `[INVALID API KEY]\n\nThe API key provided was rejected by Google Gemini and OpenRouter. Keys must start with 'AIza...' (Gemini) or 'sk-or-...' (OpenRouter).`,
+      responseText: `[API ERROR]\n\nThe API key provided was rejected. Please verify your Gemini or OpenRouter key is valid and active.`,
       topicAddressed,
       alignmentConfidence: 0,
       modelUsed: 'Invalid Key',

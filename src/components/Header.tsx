@@ -2,16 +2,18 @@ import {
   Bot, 
   Mic, 
   HardDrive,
-  RefreshCw
+  RefreshCw,
+  HelpCircle
 } from 'lucide-react';
 import type { EngineState } from '../types';
 
 interface HeaderProps {
   state: EngineState;
   onResetState: () => void;
+  onOpenGuide: () => void;
 }
 
-export function Header({ state, onResetState }: HeaderProps) {
+export function Header({ state, onResetState, onOpenGuide }: HeaderProps) {
   const { activePersona } = state;
 
   return (
@@ -71,6 +73,15 @@ export function Header({ state, onResetState }: HeaderProps) {
               </span>
             </div>
           </div>
+
+          <button
+            onClick={onOpenGuide}
+            title="How to use LivePersona Crafter"
+            className="flex items-center gap-1.5 px-3 py-2 bg-indigo-950/60 hover:bg-indigo-900/60 text-indigo-300 hover:text-indigo-100 border border-indigo-500/30 hover:border-indigo-400/50 rounded-xl transition-all text-xs font-semibold"
+          >
+            <HelpCircle className="w-4 h-4" />
+            <span className="hidden sm:inline">How to Use</span>
+          </button>
 
           <button
             onClick={onResetState}

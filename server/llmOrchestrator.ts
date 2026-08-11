@@ -412,9 +412,11 @@ ${dialogueHistory}
     profileText: string,
     userProvidedApiKey?: string
   ): Promise<PersonaProfile> {
-    const geminiKey = userProvidedApiKey || process.env.GEMINI_API_KEY;
-    if (!geminiKey) {
-      throw new Error('Gemini API Key required to generate persona.');
+    const selectedProvider = userProvidedApiKey?.startsWith('sk-or-') ? 'openrouter' : 'gemini';
+    const apiKey = userProvidedApiKey;
+
+    if (!apiKey) {
+      throw new Error('An API Key (Gemini or OpenRouter) is required to generate personas. Please verify your key first.');
     }
 
     const systemPrompt = `You are an expert HR analyst and Persona Crafter. Your job is to read a user's pasted CV, LinkedIn profile text, or bio, and extract a rich persona profile from it. You MUST output ONLY valid JSON matching this TypeScript interface exactly, with no markdown formatting around it (no \`\`\`json):
@@ -431,28 +433,74 @@ ${dialogueHistory}
   "systemPrompt": "string (A detailed system prompt instructing an LLM on how to act as this person, including their biases, knowledge areas, and personality.)"
 }`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          { parts: [{ text: `${systemPrompt}\n\nPROFILE TEXT:\n${profileText}` }] }
-        ],
-        generationConfig: { temperature: 0.2 }
-      })
-    });
+    let jsonText = '';
 
-    if (!response.ok) {
-      throw new Error(`Failed to generate persona: ${response.statusText}`);
+    // --- Path 1: Gemini API ---
+    if (selectedProvider === 'gemini') {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            { parts: [{ text: `${systemPrompt}\n\nPROFILE TEXT:\n${profileText}` }] }
+          ],
+          generationConfig: { temperature: 0.2 }
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        const errMsg = errData?.error?.message || response.statusText;
+        throw new Error(`Gemini persona generation failed: ${errMsg}. If your key starts with 'AQ.' try switching to OpenRouter provider instead.`);
+      }
+
+      const data = await response.json();
+      jsonText = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '{}';
     }
 
-    const data = await response.json();
-    let jsonText = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '{}';
-    
-    // Clean up potential markdown formatting
-    jsonText = jsonText.replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
-    
+    // --- Path 2: OpenRouter API ---
+    if (selectedProvider === 'openrouter') {
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'HTTP-Referer': 'https://meetpersona.ai',
+          'X-Title': 'MeetPersona AI',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'meta-llama/llama-3.1-8b-instruct:free',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `PROFILE TEXT:\n${profileText}` }
+          ],
+          max_tokens: 1200,
+          temperature: 0.2
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        const errMsg = errData?.error?.message || response.statusText;
+        throw new Error(`OpenRouter persona generation failed: ${errMsg}`);
+      }
+
+      const data = await response.json();
+      jsonText = data?.choices?.[0]?.message?.content?.trim() || '{}';
+    }
+
+    if (!jsonText || jsonText === '{}') {
+      throw new Error('Persona generation returned empty response. Please try again.');
+    }
+
+    // Clean up potential markdown code fences
+    jsonText = jsonText.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+
+    // Extract first JSON object if extra text wraps it
+    const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) jsonText = jsonMatch[0];
+
     const parsed = JSON.parse(jsonText);
     parsed.createdAt = new Date().toISOString();
     return parsed as PersonaProfile;

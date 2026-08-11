@@ -187,7 +187,7 @@ export function MeetPersonaAICoreEngine({
       }
       setKeyValidationStatus({
         isValid: false,
-        message: 'API Key Test Required! Please enter your Gemini Key (AIza...) or OpenRouter Key (sk-or-...) above and click Verify.'
+        message: 'API Key Test Required! Please enter your Gemini Key or OpenRouter Key (sk-or-...) above and click Verify.'
       });
       return;
     }
@@ -202,7 +202,7 @@ export function MeetPersonaAICoreEngine({
       }
       setKeyValidationStatus({
         isValid: false,
-        message: 'API Key Verification Required! Please enter a valid Gemini (AIza...) or OpenRouter (sk-or-...) Key and click Verify Key.'
+        message: 'API Key Verification Required! Please enter a valid Gemini or OpenRouter (sk-or-...) Key and click Verify Key.'
       });
       return;
     }
@@ -217,14 +217,60 @@ export function MeetPersonaAICoreEngine({
     setCustomPrompt("");
   };
 
-  // Speak a text string using Web Speech Synthesis
+  // Voice selection & Speech Synthesis State
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>(() => localStorage.getItem('LPC_SELECTED_VOICE') || '');
+  const [speechPitch, setSpeechPitch] = useState<number>(1);
+  const [speechRate, setSpeechRate] = useState<number>(0.95);
+
+  useEffect(() => {
+    if (!('speechSynthesis' in window)) return;
+    const updateVoices = () => {
+      const available = window.speechSynthesis.getVoices();
+      setVoices(available);
+      if (!selectedVoiceURI && available.length > 0) {
+        // Auto-select a high-quality/natural voice if available (e.g. Google, Natural, Neural, Online)
+        const naturalVoice = available.find(v => 
+          v.name.toLowerCase().includes('natural') || 
+          v.name.toLowerCase().includes('google') || 
+          v.name.toLowerCase().includes('online') ||
+          v.name.toLowerCase().includes('neural')
+        ) || available.find(v => v.lang.startsWith('en')) || available[0];
+        if (naturalVoice) {
+          setSelectedVoiceURI(naturalVoice.voiceURI);
+        }
+      }
+    };
+
+    updateVoices();
+    if (window.speechSynthesis.onvoiceschanged !== undefined) {
+      window.speechSynthesis.onvoiceschanged = updateVoices;
+    }
+  }, [selectedVoiceURI]);
+
+  // Speak a text string using Web Speech Synthesis with selected Voice & Naturalness settings
   const handleSpeak = (text: string) => {
     if (!('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
     if (isSpeaking) { setIsSpeaking(false); return; }
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.95;
-    utterance.pitch = 1;
+    
+    // Clean text of markdown symbols (*, #, `, _) for smoother natural speech
+    const cleanText = text
+      .replace(/[*#`_~]/g, '')
+      .replace(/\[.*?\]\(.*?\)/g, '')
+      .trim();
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.rate = speechRate;
+    utterance.pitch = speechPitch;
+
+    if (voices.length > 0) {
+      const chosenVoice = voices.find(v => v.voiceURI === selectedVoiceURI);
+      if (chosenVoice) {
+        utterance.voice = chosenVoice;
+      }
+    }
+
     utterance.onend = () => setIsSpeaking(false);
     utterance.onerror = () => setIsSpeaking(false);
     setIsSpeaking(true);
@@ -361,7 +407,7 @@ export function MeetPersonaAICoreEngine({
               <input
                 ref={keyInputRef}
                 type="password"
-                placeholder={selectedProvider === 'gemini' ? "Paste Gemini Key (AIza...)" : "Paste OpenRouter Key (sk-or...)"}
+                placeholder={selectedProvider === 'gemini' ? "Paste Gemini Key..." : "Paste OpenRouter Key (sk-or...)"}
                 value={apiKeyInput}
                 onChange={(e) => handleApiKeyChange(e.target.value)}
                 className="bg-transparent text-zinc-100 font-mono text-xs w-56 focus:outline-none placeholder:text-zinc-500"
@@ -994,20 +1040,56 @@ export function MeetPersonaAICoreEngine({
                               }`}>
                                 {response.alignmentConfidence}% Alignment Confidence
                               </span>
-                              {/* Speak button */}
+                              {/* Speak button and Voice Selector */}
                               {!isNotice && 'speechSynthesis' in window && (
-                                <button
-                                  onClick={() => handleSpeak(response.responseText)}
-                                  title={isSpeaking ? 'Stop speaking' : 'Speak this response'}
-                                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border transition-all ${
-                                    isSpeaking
-                                      ? 'bg-emerald-600 border-emerald-500 text-white animate-pulse'
-                                      : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:border-emerald-500 hover:text-emerald-300'
-                                  }`}
-                                >
-                                  {isSpeaking ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
-                                  {isSpeaking ? 'Stop' : 'Speak'}
-                                </button>
+                                <div className="flex items-center gap-1.5 bg-zinc-950 px-2 py-1 rounded-lg border border-zinc-800">
+                                  <button
+                                    onClick={() => handleSpeak(response.responseText)}
+                                    title={isSpeaking ? 'Stop speaking' : 'Speak this response'}
+                                    className={`flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold border transition-all ${
+                                      isSpeaking
+                                        ? 'bg-emerald-600 border-emerald-500 text-white animate-pulse'
+                                        : 'bg-indigo-600 hover:bg-indigo-500 border-indigo-500 text-white'
+                                    }`}
+                                  >
+                                    {isSpeaking ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                                    {isSpeaking ? 'Stop' : 'Speak'}
+                                  </button>
+
+                                  {voices.length > 0 && (
+                                    <select
+                                      value={selectedVoiceURI}
+                                      onChange={(e) => {
+                                        setSelectedVoiceURI(e.target.value);
+                                        localStorage.setItem('LPC_SELECTED_VOICE', e.target.value);
+                                      }}
+                                      className="bg-zinc-900 border border-zinc-700 text-zinc-200 text-[11px] font-medium rounded px-2 py-0.5 max-w-[160px] focus:outline-none"
+                                      title="Select Natural Speech Voice"
+                                    >
+                                      {voices.map(v => (
+                                        <option key={v.voiceURI} value={v.voiceURI} className="bg-zinc-900 text-zinc-100">
+                                          {v.name.length > 25 ? v.name.substring(0, 25) + '...' : v.name} ({v.lang})
+                                        </option>
+                                      ))}
+                                    </select>
+                                  )}
+
+                                  <div className="flex items-center gap-1 border-l border-zinc-800 pl-1.5 text-[10px] text-zinc-400">
+                                    <span title="Speech Speed Rate">Speed:</span>
+                                    <select
+                                      value={speechRate}
+                                      onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
+                                      className="bg-zinc-900 text-zinc-300 rounded text-[10px] border border-zinc-800 focus:outline-none"
+                                    >
+                                      <option value="0.8">0.8x</option>
+                                      <option value="0.9">0.9x</option>
+                                      <option value="0.95">0.95x</option>
+                                      <option value="1.0">1.0x</option>
+                                      <option value="1.1">1.1x</option>
+                                      <option value="1.2">1.2x</option>
+                                    </select>
+                                  </div>
+                                </div>
                               )}
                             </div>
                           </div>
@@ -1331,7 +1413,7 @@ export function MeetPersonaAICoreEngine({
             </div>
             <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg space-y-1.5">
               <span className="font-bold text-amber-400 block">2. Strict Prefix Format Rules</span>
-              <p className="text-[11px] text-zinc-400">Keys must start with 'AIza...' (Gemini) or 'sk-or-...' (OpenRouter). Pseudo-keys are rejected.</p>
+              <p className="text-[11px] text-zinc-400">OpenRouter keys start with 'sk-or-...'. Gemini keys from AI Studio are accepted in any format. Invalid keys are rejected after live verification.</p>
             </div>
             <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-lg space-y-1.5">
               <span className="font-bold text-emerald-400 block">3. Multi-Model Gemini & OpenRouter Engine</span>

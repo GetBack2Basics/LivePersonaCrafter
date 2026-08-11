@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>How to Use — LivePersona Crafter | GetBack2Basics</title>
+  <meta name="description" content="Complete guide to using LivePersona Crafter — the Real-Time Persona Evaluation & Debate Engine by GetBack2Basics. Learn API setup, persona management, mic debating, feedback evaluation, and data export." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --zinc-950: #09090b;
+      --zinc-900: #18181b;
+      --zinc-800: #27272a;
+      --zinc-700: #3f3f46;
+      --zinc-400: #a1a1aa;
+      --zinc-300: #d4d4d8;
+      --zinc-100: #f4f4f5;
+      --indigo-950: #1e1b4b;
+      --indigo-500: #6366f1;
+      --indigo-400: #818cf8;
+      --indigo-300: #a5b4fc;
+      --emerald-400: #34d399;
+      --amber-400: #fbbf24;
+      --amber-200: #fde68a;
+      --cyan-400: #22d3ee;
+      --rose-400: #fb7185;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--zinc-950);
+      color: var(--zinc-300);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* ─── Layout ─── */
+    .site-header {
+      position: sticky; top: 0; z-index: 50;
+      background: rgba(9,9,11,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--zinc-800);
+      padding: 14px 24px;
+    }
+
+    .site-header-inner {
+      max-width: 900px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    }
+
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-icon {
+      width: 38px; height: 38px;
+      background: rgba(99,102,241,0.15);
+      border: 1px solid rgba(99,102,241,0.4);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .brand-title { font-size: 15px; font-weight: 800; color: var(--zinc-100); letter-spacing: -0.3px; }
+    .brand-title span { color: var(--indigo-400); }
+    .brand-sub { font-size: 11px; color: var(--zinc-400); }
+
+    .back-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px; border-radius: 10px;
+      border: 1px solid var(--zinc-700);
+      background: var(--zinc-900);
+      color: var(--zinc-300);
+      text-decoration: none; font-size: 12px; font-weight: 600;
+      transition: all 0.15s;
+    }
+    .back-btn:hover { background: var(--zinc-800); color: var(--zinc-100); }
+
+    /* ─── Main Content ─── */
+    .main {
+      max-width: 900px; margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    /* ─── Hero ─── */
+    .hero {
+      text-align: center; margin-bottom: 48px;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px; border-radius: 999px;
+      border: 1px solid rgba(99,102,241,0.4);
+      background: rgba(99,102,241,0.08);
+      color: var(--indigo-400);
+      font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+      text-transform: uppercase; margin-bottom: 16px;
+    }
+    .hero h1 {
+      font-size: clamp(24px, 5vw, 36px);
+      font-weight: 900; color: var(--zinc-100);
+      letter-spacing: -0.5px; margin-bottom: 12px;
+    }
+    .hero h1 span { color: var(--indigo-400); }
+    .hero p {
+      font-size: 15px; color: var(--zinc-400); max-width: 560px; margin: 0 auto;
+    }
+
+    /* ─── Tabs ─── */
+    .tabs-nav {
+      display: flex; gap: 6px; flex-wrap: wrap;
+      border-bottom: 1px solid var(--zinc-800);
+      padding-bottom: 0; margin-bottom: 36px;
+    }
+
+    .tab-btn {
+      display: flex; align-items: center; gap: 7px;
+      padding: 9px 16px;
+      border: none; border-radius: 10px 10px 0 0;
+      background: transparent;
+      color: var(--zinc-400);
+      font-family: 'Inter', sans-serif;
+      font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: all 0.15s;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .tab-btn:hover { color: var(--zinc-100); background: rgba(255,255,255,0.04); }
+    .tab-btn.active {
+      color: var(--indigo-300);
+      border-bottom-color: var(--indigo-500);
+      background: rgba(99,102,241,0.06);
+    }
+
+    .tab-panel { display: none; animation: fadeIn 0.2s ease; }
+    .tab-panel.active { display: block; }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+    /* ─── Section Heading ─── */
+    .section-header {
+      display: flex; align-items: center; gap: 12px;
+      padding-bottom: 16px; margin-bottom: 20px;
+      border-bottom: 1px solid var(--zinc-800);
+    }
+    .section-icon {
+      width: 38px; height: 38px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; flex-shrink: 0;
+    }
+    .section-icon.indigo { background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.3); }
+    .section-icon.amber  { background: rgba(251,191,36,0.12); border: 1px solid rgba(251,191,36,0.3); }
+    .section-icon.emerald{ background: rgba(52,211,153,0.12); border: 1px solid rgba(52,211,153,0.3); }
+    .section-icon.cyan   { background: rgba(34,211,238,0.12); border: 1px solid rgba(34,211,238,0.3); }
+    .section-icon.purple { background: rgba(168,85,247,0.12); border: 1px solid rgba(168,85,247,0.3); }
+
+    .section-title { font-size: 17px; font-weight: 800; color: var(--zinc-100); }
+    .section-sub   { font-size: 12px; color: var(--zinc-400); margin-top: 2px; }
+
+    /* ─── Steps ─── */
+    .steps { display: flex; flex-direction: column; gap: 14px; }
+
+    .step {
+      display: flex; gap: 16px;
+      padding: 16px; border-radius: 14px;
+      background: rgba(24,24,27,0.8);
+      border: 1px solid var(--zinc-800);
+    }
+
+    .step-num {
+      flex-shrink: 0;
+      width: 32px; height: 32px; border-radius: 50%;
+      background: rgba(99,102,241,0.2);
+      border: 1px solid rgba(99,102,241,0.5);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 13px; color: var(--indigo-300);
+    }
+
+    .step-body { flex: 1; }
+    .step-title { font-size: 13px; font-weight: 700; color: var(--zinc-100); margin-bottom: 6px; }
+    .step-desc { font-size: 12px; color: var(--zinc-400); line-height: 1.7; }
+    .step-desc ul { margin-top: 6px; padding-left: 14px; }
+    .step-desc li { margin-bottom: 3px; }
+    .step-desc p + p { margin-top: 6px; }
+
+    /* ─── Inline Badges ─── */
+    .badge {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 1px 7px; border-radius: 5px; border: 1px solid;
+      font-size: 10px; font-weight: 700; font-family: 'Inter', sans-serif;
+    }
+    .badge.indigo { background: rgba(30,27,75,0.6); color: var(--indigo-300); border-color: rgba(99,102,241,0.35); }
+    .badge.emerald{ background: rgba(6,78,59,0.3);  color: var(--emerald-400); border-color: rgba(52,211,153,0.35); }
+    .badge.amber  { background: rgba(92,54,0,0.3);  color: var(--amber-400); border-color: rgba(251,191,36,0.35); }
+    .badge.cyan   { background: rgba(8,51,68,0.5);  color: var(--cyan-400); border-color: rgba(34,211,238,0.35); }
+    .badge.rose   { background: rgba(70,10,20,0.4); color: var(--rose-400); border-color: rgba(251,113,133,0.35); }
+
+    /* ─── Tip Box ─── */
+    .tip-box {
+      display: flex; gap: 12px;
+      padding: 14px 16px; border-radius: 12px;
+      background: rgba(92,54,0,0.2);
+      border: 1px solid rgba(251,191,36,0.3);
+      font-size: 12px; color: var(--amber-200); line-height: 1.7;
+      margin-top: 8px;
+    }
+    .tip-icon { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+
+    /* ─── Info Box ─── */
+    .info-box {
+      display: flex; gap: 12px;
+      padding: 14px 16px; border-radius: 12px;
+      background: rgba(30,27,75,0.3);
+      border: 1px solid rgba(99,102,241,0.3);
+      font-size: 12px; color: var(--indigo-300); line-height: 1.7;
+      margin-top: 8px;
+    }
+    .info-icon { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+
+    /* ─── Subheading within tab ─── */
+    .sub-heading {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;
+      display: flex; align-items: center; gap: 6px;
+      margin: 20px 0 10px;
+    }
+    .sub-heading.indigo { color: var(--indigo-400); }
+    .sub-heading.amber  { color: var(--amber-400); }
+    .sub-heading.emerald{ color: var(--emerald-400); }
+    .sub-heading.cyan   { color: var(--cyan-400); }
+    .sub-heading.purple { color: #c084fc; }
+
+    /* ─── Intro paragraph ─── */
+    .intro { font-size: 14px; color: var(--zinc-300); line-height: 1.75; margin-bottom: 20px; }
+    .intro strong { color: var(--zinc-100); }
+
+    /* ─── Footer ─── */
+    footer {
+      border-top: 1px solid var(--zinc-800);
+      padding: 24px;
+      text-align: center;
+      font-size: 11px; color: var(--zinc-400);
+    }
+    footer a { color: var(--indigo-400); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* ─── Code mono ─── */
+    .mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--amber-400); }
+
+    /* ─── Mobile ─── */
+    @media (max-width: 600px) {
+      .tab-btn span { display: none; }
+      .tab-btn { padding: 9px 12px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="site-header">
+    <div class="site-header-inner">
+      <div class="brand">
+        <div class="brand-icon">🤖</div>
+        <div>
+          <div class="brand-title">LivePersona <span>Crafter</span></div>
+          <div class="brand-sub">Real-Time Persona Evaluation & Debate Engine</div>
+        </div>
+      </div>
+      <a href="/" class="back-btn">← Back to App</a>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- Hero -->
+    <div class="hero">
+      <div class="hero-badge">📖 User Guide</div>
+      <h1>How to Use <span>LivePersona Crafter</span></h1>
+      <p>Everything you need to set up your API key, manage personas, run live debates, collect feedback, and export your data.</p>
+    </div>
+
+    <!-- Tab Navigation -->
+    <nav class="tabs-nav" role="tablist">
+      <button class="tab-btn active" role="tab" onclick="switchTab('getting-started', this)" id="tab-getting-started">
+        🔑 <span>Getting Started</span>
+      </button>
+      <button class="tab-btn" role="tab" onclick="switchTab('personas', this)" id="tab-personas">
+        👥 <span>Personas</span>
+      </button>
+      <button class="tab-btn" role="tab" onclick="switchTab('mic-debate', this)" id="tab-mic-debate">
+        🎙️ <span>Mic & Debate</span>
+      </button>
+      <button class="tab-btn" role="tab" onclick="switchTab('feedback', this)" id="tab-feedback">
+        ⭐ <span>Feedback & Evaluation</span>
+      </button>
+      <button class="tab-btn" role="tab" onclick="switchTab('data-export', this)" id="tab-data-export">
+        💾 <span>Data & Export</span>
+      </button>
+    </nav>
+
+    <!-- ═══ TAB: Getting Started ═══ -->
+    <div class="tab-panel active" id="panel-getting-started">
+      <div class="section-header">
+        <div class="section-icon indigo">🤖</div>
+        <div>
+          <div class="section-title">Welcome to LivePersona Crafter</div>
+          <div class="section-sub">Real-Time Persona Evaluation & Debate Engine by GetBack2Basics</div>
+        </div>
+      </div>
+
+      <p class="intro">
+        LivePersona Crafter lets you create <strong>AI-powered debate personas</strong>, generate real-time spoken
+        responses, and evaluate persona alignment with human feedback — all running <strong>locally-first</strong>
+        with offline persistence.
+      </p>
+
+      <div class="sub-heading indigo">🔑 Step 1 — Connect Your API Key</div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-title">Choose Your AI Provider</div>
+            <div class="step-desc">
+              <p>At the top of the engine panel, select either:</p>
+              <ul>
+                <li><span class="badge cyan">Gemini API</span> — Google's Gemini models. Get a free key at <span class="mono">aistudio.google.com</span></li>
+                <li><span class="badge amber">OpenRouter</span> — Multi-model gateway. Get a key at <span class="mono">openrouter.ai</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-title">Paste & Verify Your Key</div>
+            <div class="step-desc">
+              <p>Paste your key into the password field next to the provider selector.</p>
+              <p>Click <span class="badge indigo">Verify Key</span> — the app performs a live HTTP ping to confirm the key is valid before enabling any AI features.</p>
+              <p>Once verified, the border turns <span class="badge emerald">✓ green</span> and the button shows "Verified".</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-title">Select Your Model</div>
+            <div class="step-desc">
+              <p>Use the model dropdown next to the provider. When your key is verified, it auto-populates with available models grouped by tier:</p>
+              <ul>
+                <li><strong style="color: #34d399">Free</strong> — no-cost models (Llama, Gemma, Qwen)</li>
+                <li><strong style="color: #fbbf24">Cheap / Medium</strong> — cost-effective paid models</li>
+                <li><strong style="color: #fb7185">Top</strong> — Claude, GPT-4o, Gemini Pro</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tip-box">
+        <div class="tip-icon">💡</div>
+        <div><strong>Your key is stored only in your browser's localStorage</strong> — it never leaves your device except when making direct API calls to the provider you chose.</div>
+      </div>
+    </div>
+
+    <!-- ═══ TAB: Personas ═══ -->
+    <div class="tab-panel" id="panel-personas">
+      <div class="section-header">
+        <div class="section-icon purple">👥</div>
+        <div>
+          <div class="section-title">Persona Management</div>
+          <div class="section-sub">Create, switch, and edit AI debate personas</div>
+        </div>
+      </div>
+
+      <p class="intro">
+        A <strong>Persona</strong> is a named AI character with a role, background, and key traits that shapes how the
+        AI responds in debates. You can switch between personas mid-session without losing your transcript history.
+      </p>
+
+      <div class="sub-heading purple">👥 Working With Personas</div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-title">Switch Active Persona</div>
+            <div class="step-desc">
+              <p>In the <strong>Active Persona</strong> sidebar (bottom-left card), click any persona card to make it active.</p>
+              <p>The active persona is highlighted with an <span class="badge emerald">Active</span> badge.</p>
+              <p>All subsequent AI responses will use this persona's voice, background, and traits.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-title">Create a New Persona via AI</div>
+            <div class="step-desc">
+              <p>In the <strong>Persona Matrix</strong> tab, click <span class="badge indigo">✨ Add New Persona</span>.</p>
+              <p>Paste any profile text — a LinkedIn bio, a job description, or a character brief — into the text area.</p>
+              <p>Click <span class="badge indigo">Generate Persona</span>. The AI will extract a structured persona (name, role, traits, background) automatically.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-title">Edit an Existing Persona</div>
+            <div class="step-desc">
+              <p>With the persona active, switch to the <strong>Persona Matrix</strong> tab.</p>
+              <p>Click <span class="badge amber">Edit</span> to inline-edit the name, role, background and key traits.</p>
+              <p>Click <span class="badge emerald">Save Changes</span> to persist the edits.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tip-box">
+        <div class="tip-icon">💡</div>
+        <div>Each persona's avatar is auto-assigned from a curated avatar URL. You can update this via the edit form by pasting a direct image URL.</div>
+      </div>
+    </div>
+
+    <!-- ═══ TAB: Mic & Debate ═══ -->
+    <div class="tab-panel" id="panel-mic-debate">
+      <div class="section-header">
+        <div class="section-icon amber">🎙️</div>
+        <div>
+          <div class="section-title">Mic & Debate Engine</div>
+          <div class="section-sub">Live speech recognition and AI persona response generation</div>
+        </div>
+      </div>
+
+      <p class="intro">
+        The debate engine captures your speech via your device microphone, converts it to text, and then generates
+        an <strong>in-character AI response</strong> from the active persona — optionally spoken aloud via
+        text-to-speech.
+      </p>
+
+      <div class="sub-heading amber">🎙️ Running a Debate Session</div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-title">Start Microphone Transcription</div>
+            <div class="step-desc">
+              <p>Click the <span class="badge amber">🎤 Start Mic</span> button in the Debate Control panel.</p>
+              <p>Your browser will request microphone permission — click Allow.</p>
+              <p>Speak clearly. Live interim text will appear as you talk. Final segments are saved as transcript entries.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-title">Set Debate Parameters</div>
+            <div class="step-desc">
+              <ul>
+                <li><strong>Target Duration:</strong> Use the slider to set desired response length (15–120 seconds). The AI calibrates word count accordingly.</li>
+                <li><strong>Latency Leeway:</strong> Choose Low / Medium / High to balance speed vs. quality.</li>
+                <li><strong>Custom Prompt:</strong> Type or paste a debate topic/question directly into the prompt field.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-title">Trigger a Persona Response</div>
+            <div class="step-desc">
+              <p>Click <span class="badge indigo">⚡ Trigger Debate Response</span>.</p>
+              <p>The AI generates a response in the active persona's voice. It appears in the response area with latency, word count, and model metadata.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <div class="step-title">Text-to-Speech Playback</div>
+            <div class="step-desc">
+              <p>On any generated response, click the <span class="badge cyan">🔊 Speak</span> button to hear it read aloud using your browser's speech synthesis.</p>
+              <p>Click again to stop playback at any time.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <div class="step-title">Stop Mic / Manual Transcript Entry</div>
+            <div class="step-desc">
+              <p>Click <span class="badge rose">Stop Mic</span> to end microphone capture.</p>
+              <p>You can also manually add transcript entries via the <strong>Transcript</strong> tab's add form.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tip-box">
+        <div class="tip-icon">⚠️</div>
+        <div><strong>Prerequisite:</strong> A verified API key is required before you can start the microphone or trigger responses. The mic button will prompt you to verify your key if none is set.</div>
+      </div>
+    </div>
+
+    <!-- ═══ TAB: Feedback & Evaluation ═══ -->
+    <div class="tab-panel" id="panel-feedback">
+      <div class="section-header">
+        <div class="section-icon emerald">⭐</div>
+        <div>
+          <div class="section-title">Feedback & Human Evaluation</div>
+          <div class="section-sub">Rate AI persona responses and track alignment scores</div>
+        </div>
+      </div>
+
+      <p class="intro">
+        After each AI response is generated, you or other evaluators can score how well the persona performed —
+        rating <strong>alignment with human expectations</strong> on a 1–5 scale.
+      </p>
+
+      <div class="sub-heading emerald">⭐ Submitting Feedback</div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-title">Select Your Evaluator Name</div>
+            <div class="step-desc">
+              <p>In the <strong>Feedback</strong> tab, your name defaults to the active persona name.</p>
+              <p>Click the evaluator dropdown to switch to a previously used name, or click <span class="badge indigo">+ Add Evaluator</span> to register a new evaluator.</p>
+              <p>Evaluator names are persisted in localStorage across sessions.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-title">Rate a Response</div>
+            <div class="step-desc">
+              <p>Click <span class="badge amber">💬 Rate This Response</span> on any generated response.</p>
+              <p>A feedback form appears with:</p>
+              <ul>
+                <li><strong>Score (1–5):</strong> Use the slider or click star buttons</li>
+                <li><strong>Comment:</strong> Optional qualitative notes</li>
+              </ul>
+              <p>Click <span class="badge emerald">Submit Feedback</span> to save.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-title">View the Feedback Log</div>
+            <div class="step-desc">
+              <p>Open the <strong>Feedback</strong> tab to see all submitted evaluations, including who rated, what score, and when.</p>
+              <p>The dashboard header shows the <strong>average alignment score</strong> across all submissions.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <div class="step-title">Share a Feedback Link</div>
+            <div class="step-desc">
+              <p>Click <span class="badge cyan">🌐 Copy Feedback Link</span> to copy a shareable URL.</p>
+              <p>Share this link with colleagues or stakeholders to collect distributed feedback on the same session.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tip-box">
+        <div class="tip-icon">💡</div>
+        <div>Use the Feedback tab to track how consistently the persona responds in-character across multiple triggered debates during a session.</div>
+      </div>
+    </div>
+
+    <!-- ═══ TAB: Data & Export ═══ -->
+    <div class="tab-panel" id="panel-data-export">
+      <div class="section-header">
+        <div class="section-icon cyan">💾</div>
+        <div>
+          <div class="section-title">Data Storage & Export</div>
+          <div class="section-sub">Local-first IndexedDB persistence and JSON export</div>
+        </div>
+      </div>
+
+      <p class="intro">
+        All session data — transcripts, AI responses, and feedback — is stored locally in your browser's
+        <strong>IndexedDB</strong>. No account or internet connection is required to access past sessions.
+      </p>
+
+      <div class="sub-heading cyan">💾 Understanding Local Storage</div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-title">Local Store Telemetry</div>
+            <div class="step-desc">
+              <p>The <strong>Local Store Telemetry</strong> card (bottom-center of the dashboard) shows live counts:</p>
+              <ul>
+                <li><strong>Mic Transcripts:</strong> Spoken segments captured this session</li>
+                <li><strong>Bot Responses:</strong> AI persona responses generated</li>
+                <li><strong>Feedback Evaluations:</strong> Human ratings submitted</li>
+              </ul>
+              <p>The DB Status shows <span class="badge cyan">IndexedDB Offline Persistence</span> when working locally.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-title">Export Feedback as JSON</div>
+            <div class="step-desc">
+              <p>In the <strong>Feedback</strong> tab, click <span class="badge indigo">⬇ Export Dataset JSON</span>.</p>
+              <p>This downloads a structured JSON file containing all responses paired with their human ratings — ready for analysis or model fine-tuning workflows.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-title">LLM Call Logs</div>
+            <div class="step-desc">
+              <p>Switch to the <strong>LLM Logs</strong> tab to inspect the raw prompt/response traces for every AI call made in this session.</p>
+              <p>Three trace types are shown: Persona Response, Alignment Evaluation, and Transcript Context Processing.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <div class="step-title">Reset Session State</div>
+            <div class="step-desc">
+              <p>Click the <span class="badge rose">↺ Reset</span> icon in the top-right of the Header to clear all in-memory state and return to defaults.</p>
+              <p><strong style="color: #fb7185">Note:</strong> This resets runtime state only. IndexedDB data persists until manually cleared via your browser's DevTools storage panel.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="info-box">
+        <div class="info-icon">›</div>
+        <div>
+          <strong>GetBack2Basics Portfolio Context:</strong> The knowledge base embedded in this engine references 5 real repositories —
+          <span class="mono">SpatialCourse_Crafter</span>, <span class="mono">SplatOlympics</span>, <span class="mono">Enterprise_Geo_Metadata</span>,
+          <span class="mono">BibleStudy-Crafter</span>, and <span class="mono">CoverLetter-Crafter</span>.
+          These inform the persona's contextual knowledge during debates.
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <footer>
+    <p>LivePersona Crafter &copy; <a href="https://github.com/GetBack2Basics" target="_blank" rel="noopener noreferrer">GetBack2Basics</a> &nbsp;·&nbsp; Built with local-first AI &nbsp;·&nbsp; <a href="/">Back to App</a></p>
+  </footer>
+
+  <script>
+    function switchTab(tabId, btnEl) {
+      // Deactivate all panels and buttons
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      // Activate target
+      document.getElementById('panel-' + tabId).classList.add('active');
+      btnEl.classList.add('active');
+    }
+
+    // Support deep-linking via hash
+    window.addEventListener('DOMContentLoaded', () => {
+      const hash = window.location.hash.replace('#', '');
+      const validTabs = ['getting-started', 'personas', 'mic-debate', 'feedback', 'data-export'];
+      if (hash && validTabs.includes(hash)) {
+        const btn = document.getElementById('tab-' + hash);
+        if (btn) switchTab(hash, btn);
+      }
+    });
+  </script>
+</body>
+</html>
