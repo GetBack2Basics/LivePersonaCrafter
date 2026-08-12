@@ -426,7 +426,6 @@ export class StorageProxy {
     const systemPrompt = buildSystemPrompt(persona, recentTranscripts, targetDurationSec, combinedContextText);
     const { targetWordCount, maxTokens } = calculateTargetWords(targetDurationSec);
     const selectedProvider = localStorage.getItem('LPC_API_PROVIDER') || (userApiKey.startsWith('AIza') ? 'gemini' : 'openrouter');
-    const isExplicitGeminiModel = !selectedModel.includes('/') && (selectedModel.includes('gemini') || selectedModel === '');
 
     // 2. Direct Browser Fetch: Gemini API (Only for native Gemini models or AIza keys)
     if (selectedProvider === 'gemini' || userApiKey.startsWith('AIza')) {
