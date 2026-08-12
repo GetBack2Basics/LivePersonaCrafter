@@ -269,24 +269,20 @@ export function usePersonaEngine() {
     persistState(cleanState);
   }, [persistState]);
 
-  const handleSetSelectedModel = useCallback((model: string) => {
-    setSelectedModel(model);
+  const updateTranscriptEntry = useCallback((transcriptId: string, updatedText: string) => {
     setState((prev) => {
-      const filteredResponses = prev.botResponses.filter(
-        (r) =>
-          !r.responseText.includes('[MODEL ACCESS NOTICE]') &&
-          !r.responseText.includes('[API KEY REQUIRED]') &&
-          !r.responseText.includes('[OPENROUTER API NOTICE]') &&
-          !r.responseText.includes('Key Required')
+      const updatedTranscripts = prev.transcripts.map((t) =>
+        t.transcriptId === transcriptId ? { ...t, text: updatedText } : t
       );
-      if (filteredResponses.length !== prev.botResponses.length) {
-        const next = { ...prev, botResponses: filteredResponses };
-        persistState(next);
-        return next;
-      }
-      return prev;
+      const next: EngineState = { ...prev, transcripts: updatedTranscripts };
+      persistState(next);
+      return next;
     });
   }, [persistState]);
+
+  const handleSetSelectedModel = useCallback((model: string) => {
+    setSelectedModel(model);
+  }, []);
 
   return {
     state,
@@ -296,6 +292,7 @@ export function usePersonaEngine() {
     selectedModel,
     setSelectedModel: handleSetSelectedModel,
     addTranscriptEntry,
+    updateTranscriptEntry,
     switchActivePersona,
     addPersona,
     updatePersona,

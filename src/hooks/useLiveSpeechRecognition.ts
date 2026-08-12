@@ -33,12 +33,71 @@ export function useLiveSpeechRecognition({
   onTranscriptAddedRef.current = onTranscriptAdded;
   onAutoTriggerRef.current = onAutoTrigger;
 
+  const [audioFrequencies, setAudioFrequencies] = useState<number[]>(new Array(16).fill(5));
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animFrameRef = useRef<number | null>(null);
+
+  // Stop Web Audio API visualization graph
+  const stopAudioGraph = useCallback(() => {
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
+    if (audioContextRef.current) {
+      try {
+        audioContextRef.current.close();
+      } catch {
+        /* ignore */
+      }
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+    setAudioFrequencies(new Array(16).fill(5));
+  }, []);
+
+  // Setup Web Audio API noise graph visualizer loop
+  const setupAudioGraph = useCallback((stream: MediaStream) => {
+    stopAudioGraph();
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 64; // Gives 32 frequency bins
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(analyser);
+
+      audioContextRef.current = ctx;
+      analyserRef.current = analyser;
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const updateGraph = () => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(dataArray);
+        // Extract 16 frequency bands normalized 0..100
+        const bands: number[] = [];
+        const step = Math.floor(dataArray.length / 16) || 1;
+        for (let i = 0; i < 16; i++) {
+          const val = dataArray[i * step] || 0;
+          bands.push(Math.min(100, Math.max(8, Math.round((val / 255) * 100))));
+        }
+        setAudioFrequencies(bands);
+        animFrameRef.current = requestAnimationFrame(updateGraph);
+      };
+      updateGraph();
+    } catch (e) {
+      console.warn('Audio visualization graph notice:', e);
+    }
+  }, [stopAudioGraph]);
+
   // Request browser microphone stream permission safely
   const requestMicAccess = useCallback(async () => {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaStreamRef.current = stream;
+        setupAudioGraph(stream);
         return true;
       } catch (err) {
         console.warn('Device microphone access denied:', err);
@@ -46,7 +105,7 @@ export function useLiveSpeechRecognition({
       }
     }
     return false;
-  }, []);
+  }, [setupAudioGraph]);
 
   const startTranscription = useCallback(async () => {
     shouldContinueRef.current = true;
@@ -68,6 +127,7 @@ export function useLiveSpeechRecognition({
     isStartedRef.current = false;
     setIsTranscribing(false);
     setInterimText('');
+    stopAudioGraph();
 
     if (restartTimerRef.current) {
       clearTimeout(restartTimerRef.current);
@@ -86,7 +146,7 @@ export function useLiveSpeechRecognition({
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
     }
-  }, []);
+  }, [stopAudioGraph]);
 
   // Initialize Web Speech API ONCE on mount with EMPTY dependency array []
   useEffect(() => {
@@ -153,6 +213,7 @@ export function useLiveSpeechRecognition({
         shouldContinueRef.current = false;
         isStartedRef.current = false;
         setIsTranscribing(false);
+        stopAudioGraph();
       }
     };
 
@@ -175,6 +236,7 @@ export function useLiveSpeechRecognition({
       } else {
         setIsTranscribing(false);
         setInterimText('');
+        stopAudioGraph();
       }
     };
 
@@ -183,6 +245,7 @@ export function useLiveSpeechRecognition({
     return () => {
       shouldContinueRef.current = false;
       isStartedRef.current = false;
+      stopAudioGraph();
       if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
       if (recognitionRef.current) {
         try { recognitionRef.current.stop(); } catch { /* ignore */ }
@@ -191,12 +254,13 @@ export function useLiveSpeechRecognition({
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
-  }, []); // ALWAYS EMPTY DEPENDENCY ARRAY - Never teardown on parent re-renders!
+  }, [stopAudioGraph]); // ALWAYS EMPTY DEPENDENCY ARRAY - Never teardown on parent re-renders!
 
   return {
     isTranscribing,
     interimText,
     latestSpokenText,
+    audioFrequencies,
     speechSupported,
     startTranscription,
     stopTranscription

@@ -14,6 +14,7 @@ export function App() {
     selectedModel,
     setSelectedModel,
     addTranscriptEntry,
+    updateTranscriptEntry,
     switchActivePersona,
     triggerPersonaResponse,
     submitFeedback,
@@ -46,6 +47,7 @@ export function App() {
             onSubmitFeedback={submitFeedback}
             onToggleListening={toggleListening}
             onAddTranscript={addTranscriptEntry}
+            onUpdateTranscript={updateTranscriptEntry}
             selectedModel={selectedModel}
             onSelectModel={setSelectedModel}
             syncStatus={lastSyncStatus}

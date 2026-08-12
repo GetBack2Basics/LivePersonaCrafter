@@ -273,7 +273,7 @@ export function getOpenRouterModelId(selectedModel: string): string {
   if (!selectedModel) return 'google/gemma-2-9b-it:free';
   if (selectedModel.includes('/')) return selectedModel;
   
-  // Legacy fallbacks just in case there's old local state
+  // Legacy fallbacks and model mappings
   switch (selectedModel) {
     case 'deepseek-r1-free': return 'deepseek/deepseek-r1:free';
     case 'llama-3.3-70b-free': return 'meta-llama/llama-3.3-70b-instruct:free';
@@ -283,9 +283,15 @@ export function getOpenRouterModelId(selectedModel: string): string {
     case 'claude-3.5-sonnet': return 'anthropic/claude-3.5-sonnet';
     case 'gpt-4o': return 'openai/gpt-4o';
     case 'gemma-2-9b-free': return 'google/gemma-2-9b-it:free';
-    case 'gemini-1.5-flash':
-    case 'gemini-1.5-pro':
-    default: return 'google/gemma-2-9b-it:free';
+    case 'gemini-2.5-flash': return 'google/gemini-2.5-flash';
+    case 'gemini-2.0-flash': return 'google/gemini-2.0-flash-lite-preview-02-05:free';
+    case 'gemini-1.5-flash': return 'google/gemini-flash-1.5';
+    case 'gemini-1.5-pro': return 'google/gemini-pro-1.5';
+    default:
+      if (selectedModel.includes('gemini-2.5')) return 'google/gemini-2.5-flash';
+      if (selectedModel.includes('gemini-2.0')) return 'google/gemini-2.0-flash-lite-preview-02-05:free';
+      if (selectedModel.includes('gemini')) return 'google/gemini-flash-1.5';
+      return 'google/gemma-2-9b-it:free';
   }
 }
 
@@ -364,7 +370,7 @@ export class StorageProxy {
     const startTime = Date.now();
     const userApiKey = getUserApiKey();
 
-    if (!userApiKey) {
+    if (!userApiKey || !isApiKeyVerifiedLocally()) {
       return {
         responseText: `[REAL API KEY REQUIRED]\n\nPlease enter a valid Gemini API Key or OpenRouter Key (starting with 'sk-or-...') in the top header and click 'Verify Key' to unlock live AI persona responses.`,
         topicAddressed: 'API Key Verification Required',
@@ -422,10 +428,13 @@ export class StorageProxy {
     const selectedProvider = localStorage.getItem('LPC_API_PROVIDER') || (userApiKey.startsWith('AIza') ? 'gemini' : 'openrouter');
     const isExplicitGeminiModel = !selectedModel.includes('/') && (selectedModel.includes('gemini') || selectedModel === '');
 
-    // 2. Direct Browser Fetch: Gemini API (Only for native Gemini models)
-    if (selectedProvider === 'gemini' && isExplicitGeminiModel) {
+    // 2. Direct Browser Fetch: Gemini API (Only for native Gemini models or AIza keys)
+    if (selectedProvider === 'gemini' || userApiKey.startsWith('AIza')) {
       try {
-        const chosenModel = selectedModel.includes('pro') ? 'gemini-1.5-pro' : 'gemini-1.5-flash';
+        let chosenModel = selectedModel.replace(/^(google\/|models\/)/i, '').trim();
+        if (!chosenModel || chosenModel.includes('/')) {
+          chosenModel = 'gemini-1.5-flash';
+        }
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${chosenModel}:generateContent?key=${userApiKey}`;
         const response = await fetch(url, {
           method: 'POST',

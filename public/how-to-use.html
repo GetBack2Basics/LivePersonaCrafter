@@ -297,6 +297,9 @@
       <button class="tab-btn" role="tab" onclick="switchTab('data-export', this)" id="tab-data-export">
         💾 <span>Data & Export</span>
       </button>
+      <button class="tab-btn" role="tab" onclick="switchTab('tech-stack', this)" id="tab-tech-stack">
+        💻 <span>Tech Stack & Architecture</span>
+      </button>
     </nav>
 
     <!-- ═══ TAB: Getting Started ═══ -->
@@ -664,6 +667,80 @@
           These inform the persona's contextual knowledge during debates.
         </div>
       </div>
+    <!-- ═══ TAB: Tech Stack & Architecture ═══ -->
+    <div class="tab-panel" id="panel-tech-stack">
+      <div class="section-header">
+        <div class="section-icon indigo">💻</div>
+        <div>
+          <div class="section-title">Technical Architecture & Tech Stack</div>
+          <div class="section-sub">Languages, Hardware APIs, AI Frameworks & GitHub Repositories</div>
+        </div>
+      </div>
+
+      <p class="intro">
+        LivePersona Crafter is built as a local-first, privacy-respecting AI persona evaluation and debate platform.
+        Here is the comprehensive technical breakdown of languages, libraries, hardware APIs, AI orchestrators, and open-source GitHub repositories used in this project:
+      </p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-title">Core Languages & Web Framework</div>
+            <div class="step-desc">
+              <ul>
+                <li><strong>TypeScript 5.x:</strong> Strict type-safety across client hooks, storage proxies, and backend orchestrators.</li>
+                <li><strong>React 18 & Vite:</strong> Fast component rendering, HMR, and modular SPA state hooks.</li>
+                <li><strong>TailwindCSS & Lucide Icons:</strong> Sleek dark-mode Bento UI system with responsive glassmorphic cards.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-title">Hardware & Browser Audio APIs</div>
+            <div class="step-desc">
+              <ul>
+                <li><strong>Web Speech API (SpeechRecognition):</strong> Continuous live device microphone speech-to-text input.</li>
+                <li><strong>Web Audio API (AudioContext & AnalyserNode):</strong> Real-time FFT 16-band audio noise graph visualizer.</li>
+                <li><strong>Web Speech API (SpeechSynthesis):</strong> Natural vocalization rate & pitch synthesis.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-title">Multi-Model AI Orchestration</div>
+            <div class="step-desc">
+              <ul>
+                <li><strong>Google Gemini API:</strong> Direct Google Cloud inference (<span class="mono">gemini-1.5-flash</span>, <span class="mono">gemini-2.0-flash</span>, <span class="mono">gemini-2.5-flash</span>).</li>
+                <li><strong>OpenRouter API Router:</strong> Open multi-provider routing (Gemma 2 9B Free, Llama 3.3 70B, DeepSeek V3/R1, Qwen 2.5 72B, Claude 3.5, GPT-4o).</li>
+                <li><strong>Node.js Express Server:</strong> Backend proxy on port 3001/3005 for structured trace logs.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <div class="step-title">Embedded GitHub Repositories</div>
+            <div class="step-desc">
+              <ul>
+                <li><strong>GetBack2Basics/LivePersonaCrafter:</strong> Main repository for real-time persona craft engine and evaluation benchmarks.</li>
+                <li><strong>SpatialCourse_Crafter:</strong> Local-first spatial map course generator and waypoint scoring engine.</li>
+                <li><strong>SplatOlympics:</strong> WebGPU and WebGL 3D Gaussian Splatting rendering engine offloaded to web workers.</li>
+                <li><strong>Enterprise_Geo_Metadata:</strong> Spatial CRS reprojection pipeline (GDA94 to GDA2020) and enterprise metadata catalog.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
 
   </main>
@@ -685,7 +762,7 @@
     // Support deep-linking via hash
     window.addEventListener('DOMContentLoaded', () => {
       const hash = window.location.hash.replace('#', '');
-      const validTabs = ['getting-started', 'personas', 'mic-debate', 'feedback', 'data-export'];
+      const validTabs = ['getting-started', 'personas', 'mic-debate', 'feedback', 'data-export', 'tech-stack'];
       if (hash && validTabs.includes(hash)) {
         const btn = document.getElementById('tab-' + hash);
         if (btn) switchTab(hash, btn);

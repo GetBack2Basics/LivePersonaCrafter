@@ -17,6 +17,7 @@ interface BentoGridProps {
   onSubmitFeedback: (responseId: string, name: string, score: number, comment: string) => void;
   onToggleListening: () => void;
   onAddTranscript: (entry: TranscriptEntry) => void;
+  onUpdateTranscript?: (transcriptId: string, text: string) => void;
   selectedModel: string;
   onSelectModel: (model: string) => void;
   syncStatus?: 'LOCAL_ONLY' | 'INDEXEDDB' | 'CLOUD_SYNCED';
@@ -32,6 +33,7 @@ export function BentoGrid({
   onSubmitFeedback,
   onToggleListening,
   onAddTranscript,
+  onUpdateTranscript,
   selectedModel,
   onSelectModel,
   syncStatus,
@@ -121,6 +123,7 @@ export function BentoGrid({
         onSubmitFeedback={onSubmitFeedback}
         onToggleListening={onToggleListening}
         onAddTranscript={onAddTranscript}
+        onUpdateTranscript={onUpdateTranscript}
         selectedModel={selectedModel}
         onSelectModel={onSelectModel}
         syncStatus={syncStatus}

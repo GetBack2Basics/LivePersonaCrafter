@@ -31,17 +31,40 @@ import {
   Lock,
   Check,
   UserPlus,
-  Timer
+  Timer,
+  Edit3,
+  Eraser,
+  CornerDownLeft
 } from "lucide-react";
 import type { EngineState, TranscriptEntry } from "../types";
 import { useFeedbackCollector } from "../hooks/useFeedbackCollector";
 import { useLiveSpeechRecognition } from "../hooks/useLiveSpeechRecognition";
 import { StorageProxy, getUserApiKey, setUserApiKey, validateApiKey, isApiKeyVerifiedLocally } from "../engine/storageProxy";
+import { parseQuestionFromTranscript } from "../utils/transcriptParser";
 import type { ApiModel } from "../engine/storageProxy";
 
 import personaResponseGenTrace from '../assets/llm_calls/persona_response_generation.json';
 import personaAlignTrace from '../assets/llm_calls/persona_alignment_evaluation.json';
 import transcriptCtxTrace from '../assets/llm_calls/transcript_context_processing.json';
+
+// Live 16-band Audio Noise Graph Visualizer component
+function AudioNoiseGraph({ frequencies }: { frequencies: number[] }) {
+  const bars = frequencies && frequencies.length > 0 ? frequencies : new Array(16).fill(5);
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-950/80 border border-emerald-500/30 rounded-xl">
+      <span className="text-[10px] font-bold font-mono text-emerald-400 shrink-0 uppercase tracking-wider">Mic Noise Graph</span>
+      <div className="flex items-end gap-1 h-5 w-32 justify-between">
+        {bars.map((freq, idx) => (
+          <div
+            key={idx}
+            className="w-1 bg-gradient-to-t from-emerald-600 via-emerald-400 to-cyan-300 rounded-t transition-all duration-75"
+            style={{ height: `${Math.max(12, freq)}%` }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 interface CoreEngineProps {
   engineState: EngineState;
@@ -50,6 +73,7 @@ interface CoreEngineProps {
   onSubmitFeedback: (responseId: string, name: string, score: number, comment: string) => void;
   onToggleListening: () => void;
   onAddTranscript: (entry: TranscriptEntry) => void;
+  onUpdateTranscript?: (transcriptId: string, text: string) => void;
   selectedModel: string;
   onSelectModel: (model: string) => void;
   syncStatus?: 'LOCAL_ONLY' | 'INDEXEDDB' | 'CLOUD_SYNCED';
@@ -65,6 +89,7 @@ export function MeetPersonaAICoreEngine({
   onSubmitFeedback,
   onToggleListening,
   onAddTranscript,
+  onUpdateTranscript,
   selectedModel,
   onSelectModel,
   syncStatus = 'INDEXEDDB',
@@ -164,6 +189,7 @@ export function MeetPersonaAICoreEngine({
     isTranscribing, 
     interimText, 
     latestSpokenText,
+    audioFrequencies,
     startTranscription, 
     stopTranscription 
   } = useLiveSpeechRecognition({
@@ -195,6 +221,8 @@ export function MeetPersonaAICoreEngine({
   };
 
   const [promptError, setPromptError] = useState<string | null>(null);
+  const [editingTranscriptId, setEditingTranscriptId] = useState<string | null>(null);
+  const [editingTranscriptText, setEditingTranscriptText] = useState<string>('');
 
   const handleTrigger = async (promptOverride?: string) => {
     if (!hasValidKey) {
@@ -213,6 +241,9 @@ export function MeetPersonaAICoreEngine({
       setPromptError("No speech input or prompt text detected. Please speak into your microphone or type a question before asking.");
       return;
     }
+    if (promptOverride && promptOverride !== customPrompt) {
+      setCustomPrompt(promptOverride);
+    }
     setPromptError(null);
     setIsGenerating(true);
     setLastLatencyMs(null);
@@ -221,7 +252,7 @@ export function MeetPersonaAICoreEngine({
     const elapsed = Date.now() - t0;
     setLastLatencyMs(result?.latencyMs ?? elapsed);
     setIsGenerating(false);
-    setCustomPrompt("");
+    // Transcript and prompt REMAIN in the window so the user can inspect, edit, or re-run!
   };
 
   // Voice selection & Speech Synthesis State
@@ -600,7 +631,11 @@ export function MeetPersonaAICoreEngine({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {isTranscribing && (
+            <AudioNoiseGraph frequencies={audioFrequencies} />
+          )}
+
           {isTranscribing ? (
             <button
               onClick={stopTranscription}
@@ -612,14 +647,16 @@ export function MeetPersonaAICoreEngine({
           ) : (
             <button
               onClick={handleStartMicWithCheck}
+              disabled={!hasValidKey}
+              title={hasValidKey ? "Click to start continuous microphone speech recording" : "API Key entry and HTTP verification required to start microphone"}
               className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
                 hasValidKey 
                   ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 cursor-pointer' 
-                  : 'bg-zinc-900 border border-rose-500/60 text-rose-300 hover:bg-rose-950 cursor-pointer shadow-lg shadow-rose-950/40'
+                  : 'bg-zinc-900 border border-zinc-800 text-zinc-500 opacity-50 cursor-not-allowed'
               }`}
             >
-              {!hasValidKey ? <Lock className="w-4 h-4 text-rose-400 animate-bounce" /> : <Mic className="w-4 h-4" />}
-              {hasValidKey ? 'Start Device Mic' : 'Key Verification Required to Start Mic'}
+              {!hasValidKey ? <Lock className="w-4 h-4 text-zinc-500" /> : <Mic className="w-4 h-4" />}
+              {hasValidKey ? 'Start Device Mic' : 'Start Device Mic'}
             </button>
           )}
         </div>
@@ -697,8 +734,14 @@ export function MeetPersonaAICoreEngine({
                 <div className="flex gap-2">
                   {!isEditingPersona && (
                     <button 
-                      onClick={handleStartEdit}
-                      className="text-xs px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md transition-colors"
+                      onClick={() => hasValidKey && handleStartEdit()}
+                      disabled={!hasValidKey}
+                      title={hasValidKey ? "Edit active persona profile" : "API Key entry and HTTP verification required to edit personas"}
+                      className={`text-xs px-2 py-0.5 rounded-md transition-colors ${
+                        hasValidKey
+                          ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 cursor-pointer'
+                          : 'bg-zinc-900 text-zinc-600 border border-zinc-800 opacity-50 cursor-not-allowed'
+                      }`}
                     >
                       Edit Persona
                     </button>
@@ -768,8 +811,14 @@ export function MeetPersonaAICoreEngine({
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-[11px] font-semibold text-zinc-400">Persona Selector:</span>
                   <button 
-                    onClick={() => setIsAddingPersona(!isAddingPersona)}
-                    className="text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white px-2 py-0.5 rounded transition-colors"
+                    onClick={() => hasValidKey && setIsAddingPersona(!isAddingPersona)}
+                    disabled={!hasValidKey}
+                    title={hasValidKey ? "Generate persona profile from profile text" : "API Key entry and HTTP verification required to add personas"}
+                    className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+                      hasValidKey
+                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer'
+                        : 'bg-zinc-900 border border-zinc-800 text-zinc-500 opacity-50 cursor-not-allowed'
+                    }`}
                   >
                     {isAddingPersona ? 'Cancel' : '+ Add Persona'}
                   </button>
@@ -791,9 +840,10 @@ export function MeetPersonaAICoreEngine({
                     <button 
                       onClick={handleGeneratePersona}
                       disabled={isGeneratingPersona || !hasValidKey || !personaFormText.trim()}
+                      title={hasValidKey ? "Generate persona profile" : "API Key entry and HTTP verification required to generate profiles"}
                       className={`w-full py-1.5 rounded text-xs font-bold transition-colors ${
                         isGeneratingPersona || !hasValidKey || !personaFormText.trim()
-                        ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                        ? 'bg-zinc-900 border border-zinc-800 text-zinc-500 opacity-50 cursor-not-allowed'
                         : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                       }`}
                     >
@@ -924,9 +974,46 @@ export function MeetPersonaAICoreEngine({
               )}
 
               <div className="space-y-2">
-                <label className="text-xs text-zinc-400 block font-medium">
-                  Spoken Question or Debate Topic:
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-zinc-400 font-medium flex items-center gap-1.5">
+                    <MessageSquare className="w-3.5 h-3.5 text-indigo-400" />
+                    Spoken Question or Technical Prompt (Editable):
+                  </label>
+                  {customPrompt && (
+                    <button
+                      onClick={() => setCustomPrompt('')}
+                      className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-200 px-2 py-0.5 bg-zinc-950 rounded border border-zinc-800 transition-colors"
+                      title="Clear current question from window"
+                    >
+                      <Eraser className="w-3 h-3 text-rose-400" />
+                      Clear Prompt
+                    </button>
+                  )}
+                </div>
+
+                {customPrompt.trim().length > 0 && (() => {
+                  const parsedQ = parseQuestionFromTranscript(customPrompt);
+                  if (parsedQ && parsedQ !== customPrompt.trim()) {
+                    return (
+                      <div className="p-2.5 bg-indigo-950/40 border border-indigo-500/30 rounded-lg text-xs flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 truncate">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span className="text-[11px] text-zinc-400 shrink-0 font-medium">Parsed Core Question:</span>
+                          <span className="font-semibold text-indigo-200 truncate font-mono">{parsedQ}</span>
+                        </div>
+                        <button
+                          onClick={() => setCustomPrompt(parsedQ)}
+                          className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold rounded transition-colors shrink-0"
+                          title="Replace prompt with cleaned core question"
+                        >
+                          Use Parsed Question
+                        </button>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
                 <textarea
                   value={customPrompt}
                   onChange={(e) => {
@@ -947,17 +1034,29 @@ export function MeetPersonaAICoreEngine({
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-zinc-400">Sample Topics:</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-zinc-400 font-medium">Sample Topics:</span>
                   <button
-                    onClick={() => handleTrigger("What is your architectural position on training separate AI models for comparative theological texts like the Quran vs Bible?")}
-                    className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] rounded-lg transition-colors font-medium"
+                    onClick={() => hasValidKey && handleTrigger("What is your architectural position on training separate AI models for comparative theological texts like the Quran vs Bible?")}
+                    disabled={!hasValidKey}
+                    title={hasValidKey ? "Trigger sample topic response" : "API Key entry and HTTP verification required to trigger sample topics"}
+                    className={`px-2.5 py-1 text-[11px] rounded-lg transition-colors font-medium ${
+                      hasValidKey
+                        ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 cursor-pointer'
+                        : 'bg-zinc-900 border border-zinc-800 text-zinc-600 opacity-50 cursor-not-allowed'
+                    }`}
                   >
                     Comparative AI Models
                   </button>
                   <button
-                    onClick={() => handleTrigger("How do we optimize GPU WebGL matrix depth sorting for 3D Gaussian Splatting?")}
-                    className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] rounded-lg transition-colors font-medium"
+                    onClick={() => hasValidKey && handleTrigger("How do we optimize GPU WebGL matrix depth sorting for 3D Gaussian Splatting?")}
+                    disabled={!hasValidKey}
+                    title={hasValidKey ? "Trigger sample topic response" : "API Key entry and HTTP verification required to trigger sample topics"}
+                    className={`px-2.5 py-1 text-[11px] rounded-lg transition-colors font-medium ${
+                      hasValidKey
+                        ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 cursor-pointer'
+                        : 'bg-zinc-900 border border-zinc-800 text-zinc-600 opacity-50 cursor-not-allowed'
+                    }`}
                   >
                     3D Splat Depth Sorting
                   </button>
@@ -980,16 +1079,17 @@ export function MeetPersonaAICoreEngine({
                   <button
                     onClick={() => handleTrigger()}
                     disabled={isGenerating || !hasValidKey}
+                    title={hasValidKey ? `Ask ${activePersona.name} (${targetDurationSec}s)` : "API Key entry and HTTP verification required to submit questions"}
                     className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold transition-all shadow-lg ${
                       hasValidKey 
                         ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30 cursor-pointer' 
-                        : 'bg-zinc-800 text-zinc-500 opacity-50 cursor-not-allowed'
+                        : 'bg-zinc-900 border border-zinc-800 text-zinc-500 opacity-50 cursor-not-allowed'
                     }`}
                   >
                     {isGenerating ? (
                       <RefreshCw className="w-4 h-4 animate-spin text-white" />
                     ) : !hasValidKey ? (
-                      <Lock className="w-4 h-4 text-rose-400" />
+                      <Lock className="w-4 h-4 text-zinc-500" />
                     ) : (
                       <Send className="w-4 h-4" />
                     )}
@@ -1310,25 +1410,98 @@ export function MeetPersonaAICoreEngine({
               </p>
             </div>
           ) : (
-            <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-1">
+            <div className="space-y-2.5 max-h-[420px] overflow-y-auto pr-1">
               {state.transcripts.map((t: TranscriptEntry) => (
                 <div
                   key={t.transcriptId}
-                  className={`p-3 rounded-xl border text-xs leading-relaxed transition-all ${
+                  className={`p-3.5 rounded-xl border text-xs leading-relaxed transition-all ${
                     t.speakerRole === 'bot'
                       ? 'bg-indigo-950/40 border-indigo-500/40 text-indigo-100'
                       : 'bg-zinc-950 border-zinc-800/80 text-zinc-300'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center justify-between mb-1.5">
                     <span className={`font-bold ${t.speakerRole === 'bot' ? 'text-indigo-400' : 'text-zinc-200'}`}>
                       {t.speaker}
                     </span>
-                    <span className="text-[10px] text-zinc-500 font-mono">
-                      {new Date(t.timestamp).toLocaleTimeString()}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-zinc-500 font-mono">
+                        {new Date(t.timestamp).toLocaleTimeString()}
+                      </span>
+                      {t.speakerRole === 'human' && (
+                        <>
+                          <button
+                            onClick={() => {
+                              const parsed = parseQuestionFromTranscript(t.text);
+                              setCustomPrompt(parsed || t.text);
+                              setActiveTab('MATRIX');
+                            }}
+                            className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[10px] font-bold transition-colors flex items-center gap-1"
+                            title="Set this transcript as active question in prompt window"
+                          >
+                            <CornerDownLeft className="w-2.5 h-2.5" />
+                            Use as Question
+                          </button>
+                          {editingTranscriptId === t.transcriptId ? (
+                            <button
+                              onClick={() => {
+                                if (onUpdateTranscript && editingTranscriptText.trim()) {
+                                  onUpdateTranscript(t.transcriptId, editingTranscriptText.trim());
+                                }
+                                setEditingTranscriptId(null);
+                              }}
+                              className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold transition-colors"
+                            >
+                              Save
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setEditingTranscriptId(t.transcriptId);
+                                setEditingTranscriptText(t.text);
+                              }}
+                              className="px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-[10px] font-medium transition-colors flex items-center gap-1"
+                            >
+                              <Edit3 className="w-2.5 h-2.5 text-zinc-400" />
+                              Edit
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <p>{t.text}</p>
+
+                  {editingTranscriptId === t.transcriptId ? (
+                    <div className="space-y-1.5 pt-1">
+                      <textarea
+                        value={editingTranscriptText}
+                        onChange={(e) => setEditingTranscriptText(e.target.value)}
+                        className="w-full p-2 bg-zinc-900 border border-indigo-500/50 rounded text-xs text-zinc-100 focus:outline-none resize-none"
+                        rows={2}
+                      />
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          onClick={() => setEditingTranscriptId(null)}
+                          className="px-2 py-1 text-[10px] bg-zinc-800 text-zinc-400 rounded hover:text-zinc-200"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (onUpdateTranscript && editingTranscriptText.trim()) {
+                              onUpdateTranscript(t.transcriptId, editingTranscriptText.trim());
+                            }
+                            setEditingTranscriptId(null);
+                          }}
+                          className="px-2.5 py-1 text-[10px] bg-emerald-600 text-white font-bold rounded hover:bg-emerald-500"
+                        >
+                          Save Transcript
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="whitespace-pre-wrap">{t.text}</p>
+                  )}
                 </div>
               ))}
             </div>

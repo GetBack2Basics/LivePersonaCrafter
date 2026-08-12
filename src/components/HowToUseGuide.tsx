@@ -19,7 +19,11 @@ import {
   RefreshCw,
   HardDrive,
   Zap,
-  Info
+  Info,
+  FileCode,
+  Cpu,
+  Layers,
+  Code
 } from "lucide-react";
 
 interface HowToUseGuideProps {
@@ -27,7 +31,7 @@ interface HowToUseGuideProps {
   onClose: () => void;
 }
 
-type GuideTab = 'GETTING_STARTED' | 'PERSONAS' | 'MIC_DEBATE' | 'FEEDBACK' | 'DATA_EXPORT';
+type GuideTab = 'GETTING_STARTED' | 'PERSONAS' | 'MIC_DEBATE' | 'FEEDBACK' | 'DATA_EXPORT' | 'TECH_STACK';
 
 const tabs: { id: GuideTab; label: string; icon: React.ReactNode }[] = [
   { id: 'GETTING_STARTED', label: 'Getting Started', icon: <Key className="w-4 h-4" /> },
@@ -35,6 +39,7 @@ const tabs: { id: GuideTab; label: string; icon: React.ReactNode }[] = [
   { id: 'MIC_DEBATE', label: 'Mic & Debate', icon: <Mic className="w-4 h-4" /> },
   { id: 'FEEDBACK', label: 'Feedback & Evaluation', icon: <Star className="w-4 h-4" /> },
   { id: 'DATA_EXPORT', label: 'Data & Export', icon: <Database className="w-4 h-4" /> },
+  { id: 'TECH_STACK', label: 'Tech Stack & Architecture', icon: <FileCode className="w-4 h-4" /> },
 ];
 
 function StepCard({ number, title, children }: { number: number; title: string; children: React.ReactNode }) {
@@ -217,38 +222,46 @@ function MicDebateTab() {
           <Mic className="w-3.5 h-3.5" /> Running a Debate Session
         </h4>
 
-        <StepCard number={1} title="Start Microphone Transcription">
-          <p>Click the <InlineBadge color="amber"><Mic className="w-3 h-3" /> Start Mic</InlineBadge> button in the Debate Control panel.</p>
+        <StepCard number={1} title="Start Microphone & Real-Time Noise Graph">
+          <p>Click the <InlineBadge color="amber"><Mic className="w-3 h-3" /> Start Device Mic</InlineBadge> button in the Debate Control panel.</p>
           <p className="mt-1">Your browser will request microphone permission — click Allow.</p>
-          <p className="mt-1">Speak clearly. Live interim text will appear as you talk. Final segments are saved as transcript entries.</p>
+          <p className="mt-1">
+            <strong>Live Audio Noise Graph:</strong> While recording, a real-time 16-band Web Audio API frequency noise graph visualizes audio volume and input noise picked up by your mic.
+          </p>
+          <p className="mt-1">Speak clearly. Live interim text appears as you talk. Final segments are saved as transcript entries.</p>
         </StepCard>
 
-        <StepCard number={2} title="Set Debate Parameters">
+        <StepCard number={2} title="Spoken Audio Question Parser & Prompt Retention">
+          <p>Spoken transcripts automatically filter out voice filler ("um", "ah") and greetings ("hey persona") to isolate core questions.</p>
+          <p className="mt-1">
+            A <InlineBadge color="indigo">Use Parsed Question</InlineBadge> button lets you load the cleaned question straight into the prompt box.
+          </p>
+          <p className="mt-1">
+            <strong>Prompt Retention:</strong> Prompts remain in the question box after triggering responses so you can edit, refine, or re-run queries without re-typing.
+          </p>
+        </StepCard>
+
+        <StepCard number={3} title="Set Debate Parameters">
           <ul className="space-y-1">
-            <li>• <strong className="text-zinc-200">Target Duration:</strong> Use the slider to set the desired spoken response length (15–120 seconds). The AI will calibrate word count accordingly.</li>
-            <li>• <strong className="text-zinc-200">Latency Leeway:</strong> Choose Low / Medium / High to balance response speed vs. quality.</li>
+            <li>• <strong className="text-zinc-200">Target Duration:</strong> Use the slider to set desired response length (15–120 seconds). The AI calibrates word count accordingly.</li>
+            <li>• <strong className="text-zinc-200">Latency Leeway:</strong> Choose Low / Medium / High to balance speed vs. quality.</li>
             <li>• <strong className="text-zinc-200">Custom Prompt:</strong> Type or paste a debate topic/question directly into the prompt field.</li>
           </ul>
         </StepCard>
 
-        <StepCard number={3} title="Trigger a Persona Response">
-          <p>Click <InlineBadge color="indigo"><Zap className="w-3 h-3" /> Trigger Debate Response</InlineBadge>.</p>
-          <p className="mt-1">The AI generates a response in the active persona's voice. It appears in the response area with latency, word count, and model metadata.</p>
+        <StepCard number={4} title="Trigger a Persona Response">
+          <p>Click <InlineBadge color="indigo"><Zap className="w-3 h-3" /> Ask Persona</InlineBadge>.</p>
+          <p className="mt-1">The AI generates a response in the active persona's voice with real latency, word count, and model metadata.</p>
         </StepCard>
 
-        <StepCard number={4} title="Text-to-Speech Playback">
-          <p>On any generated response, click the <InlineBadge color="cyan"><Volume2 className="w-3 h-3" /> Speak</InlineBadge> button to hear it read aloud using your browser's speech synthesis.</p>
-          <p className="mt-1">Click again to stop playback at any time.</p>
-        </StepCard>
-
-        <StepCard number={5} title="Stop Mic / Manual Transcript Entry">
-          <p>Click <InlineBadge color="rose">Stop Mic</InlineBadge> to end microphone capture.</p>
-          <p className="mt-1">You can also manually add transcript entries via the <strong className="text-zinc-200">Transcript</strong> tab's add form.</p>
+        <StepCard number={5} title="Text-to-Speech Playback & Mic Stop">
+          <p>On any generated response, click <InlineBadge color="cyan"><Volume2 className="w-3 h-3" /> Speak</InlineBadge> to hear it read aloud via browser synthesis.</p>
+          <p className="mt-1">Click <InlineBadge color="rose">Stop Device Mic</InlineBadge> when finished recording.</p>
         </StepCard>
       </div>
 
       <TipBox>
-        <strong>Prerequisite:</strong> A verified API key is required before you can start the microphone or trigger responses. The mic button will prompt you to verify your key if none is set.
+        <strong>Prerequisite & Discreet Lock:</strong> A verified API key is required before starting the mic or asking questions. Inactive controls are discreetly greyed out — hover over any disabled button to view the verification tooltip.
       </TipBox>
     </div>
   );
@@ -376,6 +389,102 @@ function DataExportTab() {
   );
 }
 
+function TechStackTab() {
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-3 pb-3 border-b border-zinc-800">
+        <div className="p-2 bg-indigo-950/60 border border-indigo-500/30 rounded-xl">
+          <FileCode className="w-5 h-5 text-indigo-400" />
+        </div>
+        <div>
+          <h3 className="font-extrabold text-base text-zinc-100">Technical Architecture & Tech Stack</h3>
+          <p className="text-xs text-zinc-400">Languages, Hardware APIs, AI Frameworks & GitHub Repositories</p>
+        </div>
+      </div>
+
+      <p className="text-xs text-zinc-300 leading-relaxed">
+        LivePersona Crafter is built as a local-first, privacy-respecting AI persona evaluation and debate platform.
+        Here is the comprehensive technical breakdown of languages, libraries, hardware APIs, AI orchestrators, and open-source GitHub repositories used in this project:
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Languages & Frontend */}
+        <div className="p-4 bg-zinc-900/80 border border-zinc-800 rounded-xl space-y-2">
+          <div className="font-bold text-xs text-indigo-400 uppercase tracking-wider flex items-center gap-2">
+            <Code className="w-3.5 h-3.5" /> Core Languages & Web Framework
+          </div>
+          <ul className="text-xs text-zinc-300 space-y-1.5 list-disc list-inside">
+            <li><strong className="text-zinc-100">TypeScript 5.x:</strong> Strict type-safety across client hooks, storage proxies, and backend orchestrators.</li>
+            <li><strong className="text-zinc-100">React 18 & Vite:</strong> Ultra-fast component rendering, HMR, and modular SPA state hooks (<code className="text-indigo-300">usePersonaEngine</code>).</li>
+            <li><strong className="text-zinc-100">TailwindCSS & Lucide Icons:</strong> Sleek dark-mode Bento UI system with responsive glassmorphic cards.</li>
+          </ul>
+        </div>
+
+        {/* Hardware & Web APIs */}
+        <div className="p-4 bg-zinc-900/80 border border-zinc-800 rounded-xl space-y-2">
+          <div className="font-bold text-xs text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+            <Mic className="w-3.5 h-3.5" /> Hardware & Browser Audio APIs
+          </div>
+          <ul className="text-xs text-zinc-300 space-y-1.5 list-disc list-inside">
+            <li><strong className="text-zinc-100">Web Speech API (SpeechRecognition):</strong> Continuous live device microphone speech-to-text input.</li>
+            <li><strong className="text-zinc-100">Web Audio API (AudioContext & AnalyserNode):</strong> Real-time FFT 16-band audio noise graph visualizer.</li>
+            <li><strong className="text-zinc-100">Web Speech API (SpeechSynthesis):</strong> Natural vocalization rate & pitch synthesis.</li>
+          </ul>
+        </div>
+
+        {/* AI & Multi-Model Providers */}
+        <div className="p-4 bg-zinc-900/80 border border-zinc-800 rounded-xl space-y-2">
+          <div className="font-bold text-xs text-amber-400 uppercase tracking-wider flex items-center gap-2">
+            <Cpu className="w-3.5 h-3.5" /> Multi-Model AI Orchestration
+          </div>
+          <ul className="text-xs text-zinc-300 space-y-1.5 list-disc list-inside">
+            <li><strong className="text-zinc-100">Google Gemini API:</strong> Direct Google Cloud inference (<code className="text-amber-300">gemini-1.5-flash</code>, <code className="text-amber-300">gemini-1.5-pro</code>, <code className="text-amber-300">gemini-2.0-flash</code>, <code className="text-amber-300">gemini-2.5-flash</code>).</li>
+            <li><strong className="text-zinc-100">OpenRouter API Router:</strong> Open multi-provider routing (Gemma 2 9B Free, Llama 3.3 70B, DeepSeek V3/R1, Qwen 2.5 72B, Claude 3.5, GPT-4o).</li>
+            <li><strong className="text-zinc-100">Node.js Express Server:</strong> Backend proxy (<code className="text-zinc-400">server/llmOrchestrator.ts</code>) on port 3005 for structured trace logs.</li>
+          </ul>
+        </div>
+
+        {/* Local Storage & Persistence */}
+        <div className="p-4 bg-zinc-900/80 border border-zinc-800 rounded-xl space-y-2">
+          <div className="font-bold text-xs text-cyan-400 uppercase tracking-wider flex items-center gap-2">
+            <HardDrive className="w-3.5 h-3.5" /> Local-First Offline Storage
+          </div>
+          <ul className="text-xs text-zinc-300 space-y-1.5 list-disc list-inside">
+            <li><strong className="text-zinc-100">Browser LocalStorage:</strong> Synchronous engine state & verified key token storage.</li>
+            <li><strong className="text-zinc-100">IndexedDBStore:</strong> Async client database for multi-session transcripts & feedback dataset logs.</li>
+            <li><strong className="text-zinc-100">Firebase Firestore:</strong> Optional cloud synchronization for multi-device evaluation benchmarks.</li>
+          </ul>
+        </div>
+      </div>
+
+      {/* Embedded Repositories */}
+      <div className="p-4 bg-zinc-900/80 border border-zinc-800 rounded-xl space-y-3">
+        <div className="font-bold text-xs text-purple-400 uppercase tracking-wider flex items-center gap-2">
+          <Layers className="w-3.5 h-3.5" /> Embedded Projects & GitHub Repositories
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-zinc-300">
+          <div className="p-2.5 bg-zinc-950 rounded-lg border border-zinc-800">
+            <strong className="text-indigo-300 font-mono">GetBack2Basics/LivePersonaCrafter</strong>
+            <p className="text-[11px] text-zinc-400 mt-0.5">Primary repository for real-time persona craft engine, evaluation benchmarks, and exposed JSON traces.</p>
+          </div>
+          <div className="p-2.5 bg-zinc-950 rounded-lg border border-zinc-800">
+            <strong className="text-indigo-300 font-mono">SpatialCourse_Crafter</strong>
+            <p className="text-[11px] text-zinc-400 mt-0.5">Local-first spatial map course generator and waypoint scoring engine.</p>
+          </div>
+          <div className="p-2.5 bg-zinc-950 rounded-lg border border-zinc-800">
+            <strong className="text-indigo-300 font-mono">SplatOlympics</strong>
+            <p className="text-[11px] text-zinc-400 mt-0.5">WebGPU and WebGL 3D Gaussian Splatting rendering engine offloaded to web workers.</p>
+          </div>
+          <div className="p-2.5 bg-zinc-950 rounded-lg border border-zinc-800">
+            <strong className="text-indigo-300 font-mono">Enterprise_Geo_Metadata</strong>
+            <p className="text-[11px] text-zinc-400 mt-0.5">Spatial CRS reprojection pipeline (GDA94 to GDA2020) and enterprise metadata catalog.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function HowToUseGuide({ isOpen, onClose }: HowToUseGuideProps) {
   const [activeTab, setActiveTab] = useState<GuideTab>('GETTING_STARTED');
 
@@ -397,6 +506,7 @@ export function HowToUseGuide({ isOpen, onClose }: HowToUseGuideProps) {
       case 'MIC_DEBATE': return <MicDebateTab />;
       case 'FEEDBACK': return <FeedbackTab />;
       case 'DATA_EXPORT': return <DataExportTab />;
+      case 'TECH_STACK': return <TechStackTab />;
     }
   };
 

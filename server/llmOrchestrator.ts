@@ -104,6 +104,22 @@ export class LLMOrchestrator {
         category: 'Gemini'
       },
       {
+        id: 'gemini-2.5-flash',
+        name: 'Gemini 2.5 Flash (Direct Gemini API)',
+        provider: 'Gemini',
+        isAvailable: true,
+        latencyTier: 'Ultra High Performance',
+        category: 'Gemini'
+      },
+      {
+        id: 'gemini-2.0-flash',
+        name: 'Gemini 2.0 Flash (Direct Gemini API)',
+        provider: 'Gemini',
+        isAvailable: true,
+        latencyTier: 'High Performance',
+        category: 'Gemini'
+      },
+      {
         id: 'gemini-1.5-pro',
         name: 'Gemini 1.5 Pro (Direct Gemini API)',
         provider: 'Gemini',
@@ -256,8 +272,13 @@ ${dialogueHistory}
     const models = this.getAvailableModels();
     const selectedObj = models.find(m => m.id === selectedModel) || models[0];
 
-    const geminiKey = userProvidedApiKey || process.env.GEMINI_API_KEY;
-    const openRouterKey = userProvidedApiKey || process.env.OPENROUTER_API_KEY;
+    const isGeminiKeyFormat = Boolean(userProvidedApiKey && userProvidedApiKey.startsWith('AIza'));
+    const isOpenRouterKeyFormat = Boolean(userProvidedApiKey && userProvidedApiKey.startsWith('sk-or-'));
+
+    const geminiKey = isGeminiKeyFormat ? userProvidedApiKey : undefined;
+    const openRouterKey = isOpenRouterKeyFormat ? userProvidedApiKey : undefined;
+
+    const isGeminiModel = selectedModel.toLowerCase().includes('gemini') || selectedObj.provider === 'Gemini';
 
     let responseText = '';
     let modelUsed = selectedObj.name;
@@ -279,11 +300,14 @@ ${dialogueHistory}
       selectedModel
     });
 
-    // 1. Gemini Direct API Route
-    if (selectedObj.provider === 'Gemini' && geminiKey) {
+    // 1. Direct Gemini API Route (Hits Google Generative Language API if Gemini key is present)
+    if (geminiKey && (isGeminiModel || !openRouterKey)) {
       try {
-        const modelName = selectedModel.includes('pro') ? 'gemini-1.5-pro' : 'gemini-1.5-flash';
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiKey}`;
+        let cleanModelName = selectedModel.replace(/^(google\/|models\/)/i, '').trim();
+        if (!cleanModelName || cleanModelName.includes('/')) {
+          cleanModelName = 'gemini-1.5-flash';
+        }
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModelName}:generateContent?key=${geminiKey}`;
         apiEndpointUsed = url.replace(geminiKey, '[REDACTED_API_KEY]');
 
         const response = await fetch(url, {
@@ -308,30 +332,40 @@ ${dialogueHistory}
           const data = await response.json();
           rawApiResponse = data;
           responseText = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-          modelUsed = `Gemini (${modelName})`;
+          modelUsed = `Gemini (${cleanModelName})`;
+        } else {
+          const errData = await response.json().catch(() => ({}));
+          console.warn('Gemini API status notice:', response.status, errData);
         }
       } catch (err) {
         console.warn('Gemini API fetch exception:', err);
       }
     }
 
-    // 2. OpenRouter & Free Tier Route (Supports Free Gemma 2, DeepSeek R1, Llama 3.3, Qwen 2.5, Claude 3.5, GPT-4o, and Custom)
-    const foundModel = models.find(m => m.id === selectedModel);
-    let openRouterModelId = foundModel?.openRouterModelId || (selectedModel.includes('/') ? selectedModel : '');
-    if (!openRouterModelId) {
-      openRouterModelId = 'google/gemma-2-9b-it:free';
-    }
-    if (!responseText) {
+    // 2. OpenRouter & Free Tier Route (For OpenRouter keys or OpenRouter models)
+    if (!responseText && openRouterKey) {
+      const foundModel = models.find(m => m.id === selectedModel);
+      let openRouterModelId = foundModel?.openRouterModelId || (selectedModel.includes('/') ? selectedModel : '');
+      if (!openRouterModelId) {
+        if (selectedModel.includes('2.5')) {
+          openRouterModelId = 'google/gemini-2.5-flash';
+        } else if (selectedModel.includes('2.0')) {
+          openRouterModelId = 'google/gemini-2.0-flash-lite-preview-02-05:free';
+        } else if (selectedModel.includes('1.5')) {
+          openRouterModelId = 'google/gemini-flash-1.5';
+        } else {
+          openRouterModelId = 'google/gemma-2-9b-it:free';
+        }
+      }
+
       try {
         apiEndpointUsed = 'https://openrouter.ai/api/v1/chat/completions';
         const headers: any = {
           'HTTP-Referer': 'https://meetpersona.ai',
           'X-Title': 'MeetPersona AI',
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openRouterKey}`
         };
-        if (openRouterKey) {
-          headers['Authorization'] = `Bearer ${openRouterKey}`;
-        }
 
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
@@ -360,10 +394,11 @@ ${dialogueHistory}
       }
     }
 
-    // 3. Fallback to Gemini Free API if OpenRouter key is not set and model is free
-    if (!responseText && geminiKey) {
+    // 3. Fallback attempt for Gemini Free if responseText is still empty and any key exists
+    if (!responseText && (geminiKey || userProvidedApiKey)) {
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`;
+        const fallbackKey = geminiKey || userProvidedApiKey;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${fallbackKey}`;
         const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -381,7 +416,7 @@ ${dialogueHistory}
         if (response.ok) {
           const data = await response.json();
           responseText = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-          modelUsed = 'Gemini 1.5 Flash (Free Default)';
+          modelUsed = 'Gemini 1.5 Flash';
         }
       } catch {
         /* ignore */
