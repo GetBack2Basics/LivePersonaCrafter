@@ -188,6 +188,14 @@ export function MeetPersonaAICoreEngine({
     setApiKeyInput(rawKey);
     setUserApiKey(rawKey, false); // Mark unverified until HTTP ping passes
     setKeyValidationStatus(null);
+    const clean = rawKey.trim();
+    if (clean.startsWith('sk-or-')) {
+      setSelectedProvider('openrouter');
+      localStorage.setItem('LPC_API_PROVIDER', 'openrouter');
+    } else if (clean.startsWith('AIza')) {
+      setSelectedProvider('gemini');
+      localStorage.setItem('LPC_API_PROVIDER', 'gemini');
+    }
   };
 
   const handleTestAndSaveKey = async (keyToTest?: string) => {
@@ -198,8 +206,12 @@ export function MeetPersonaAICoreEngine({
       return;
     }
 
+    const isOpenRouterKey = cleanKey.startsWith('sk-or-');
+    const isGeminiKey = cleanKey.startsWith('AIza');
+    const providerToUse = isOpenRouterKey ? 'openrouter' : (isGeminiKey ? 'gemini' : selectedProvider);
+
     setIsValidatingKey(true);
-    const result = await validateApiKey(cleanKey, selectedProvider);
+    const result = await validateApiKey(cleanKey, providerToUse);
     setIsValidatingKey(false);
     setKeyValidationStatus({ isValid: result.isValid, message: result.message });
     if (result.models) {
@@ -209,10 +221,7 @@ export function MeetPersonaAICoreEngine({
     }
 
     if (result.isValid) {
-      const isGeminiKey = cleanKey.startsWith('AIza');
-      const isOpenRouterKey = cleanKey.startsWith('sk-or-');
-      
-      if (isOpenRouterKey || (!isGeminiKey && selectedProvider === 'openrouter')) {
+      if (isOpenRouterKey || (!isGeminiKey && providerToUse === 'openrouter')) {
         setSelectedProvider('openrouter');
         localStorage.setItem('LPC_API_PROVIDER', 'openrouter');
         const preferredFree = result.models?.find(m => m.id === 'google/gemini-2.0-flash-lite-preview-02-05:free')

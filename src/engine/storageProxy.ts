@@ -51,9 +51,13 @@ export async function validateApiKey(key: string, provider: 'openrouter' | 'gemi
     return { isValid: false, provider: 'None', message: `API Key is empty. Please enter your ${provider === 'gemini' ? 'Gemini' : 'OpenRouter'} Key.` };
   }
 
-  // 1. Determine which API to hit based on explicit provider dropdown
-  const isGeminiProvider = provider === 'gemini';
-  const isOpenRouterProvider = provider === 'openrouter';
+  // 1. Auto-detect provider from key prefix if present, falling back to explicit provider
+  const isGeminiKey = clean.startsWith('AIza');
+  const isOpenRouterKey = clean.startsWith('sk-or-');
+  const effectiveProvider = isOpenRouterKey ? 'openrouter' : (isGeminiKey ? 'gemini' : (provider || 'openrouter'));
+
+  const isGeminiProvider = effectiveProvider === 'gemini';
+  const isOpenRouterProvider = effectiveProvider === 'openrouter';
 
   // 2. Real Gemini API Ping Test
   if (isGeminiProvider) {
