@@ -187,8 +187,11 @@ export function MeetPersonaAICoreEngine({
       if (isOpenRouterKey || (!isGeminiKey && selectedProvider === 'openrouter')) {
         setSelectedProvider('openrouter');
         localStorage.setItem('LPC_API_PROVIDER', 'openrouter');
-        const firstFree = result.models?.find(m => m.group === 'Free');
-        onSelectModel(firstFree ? firstFree.id : 'google/gemini-2.0-flash-lite-preview-02-05:free');
+        const preferredFree = result.models?.find(m => m.id === 'google/gemini-2.0-flash-lite-preview-02-05:free')
+          || result.models?.find(m => m.id === 'google/gemma-2-9b-it:free')
+          || result.models?.find(m => m.id === 'meta-llama/llama-3.3-70b-instruct:free')
+          || result.models?.find(m => m.group === 'Free');
+        onSelectModel(preferredFree ? preferredFree.id : 'google/gemini-2.0-flash-lite-preview-02-05:free');
       } else {
         setSelectedProvider('gemini');
         localStorage.setItem('LPC_API_PROVIDER', 'gemini');

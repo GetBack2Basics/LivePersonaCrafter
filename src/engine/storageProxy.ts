@@ -124,7 +124,14 @@ export async function validateApiKey(key: string, provider: 'openrouter' | 'gemi
                 'qwen/qwen-2.5-72b-instruct:free',
                 'deepseek/deepseek-r1:free'
               ];
-              const freeCandidates = allModels.filter((m: any) => m.isFree);
+              const freeCandidates = allModels.filter((m: any) => {
+                if (!m.isFree) return false;
+                const idLower = (m.id || '').toLowerCase();
+                if (idLower.includes('dots-studio') || idLower.includes('auto-beta') || idLower.includes('dummy') || idLower.includes('test')) {
+                  return false;
+                }
+                return true;
+              });
               freeCandidates.sort((a: any, b: any) => {
                 const indexA = VERIFIED_FREE_MODEL_IDS.indexOf(a.id);
                 const indexB = VERIFIED_FREE_MODEL_IDS.indexOf(b.id);
