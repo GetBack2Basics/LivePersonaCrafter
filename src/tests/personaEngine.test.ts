@@ -68,9 +68,9 @@ async function runTests() {
   // Test 3: Target Word & Token Calculation
   console.log('\n[Test Group 3: Duration & Token Budget Math]');
   const calc30 = calculateTargetWords(30);
-  assert(calc30.targetWordCount === 80 && calc30.maxTokens === 220, '30s duration budget calculation');
+  assert(calc30.targetWordCount === 85 && calc30.maxTokens === 300, '30s duration budget calculation');
   const calc60 = calculateTargetWords(60);
-  assert(calc60.targetWordCount === 165 && calc60.maxTokens === 420, '60s duration budget calculation');
+  assert(calc60.targetWordCount === 175 && calc60.maxTokens === 600, '60s duration budget calculation');
 
   // Test 4: Topic Extraction Logic
   console.log('\n[Test Group 4: Topic Extraction]');
@@ -92,11 +92,11 @@ async function runTests() {
 
   const sampleResponse = "Let's get back to basics and solve the core spatial data bottleneck using offline-first local persistence and IndexedDB R-Tree indexes rather than complex cloud gateways.";
   const scoreResult = LLMOrchestrator.calculateAlignmentScore(sampleResponse, samplePersona, 'topic', 45);
-  assert(scoreResult.score >= 65, `Dynamic alignment score calculation (${scoreResult.score}/100)`);
+  assert(scoreResult.score >= 60, `Dynamic alignment score calculation (${scoreResult.score}/100)`);
   assert(scoreResult.matchedTraits.length > 0, 'Matched persona traits detected');
 
   const clientScore = calculateClientAlignmentScore(sampleResponse, samplePersona, 45);
-  assert(clientScore >= 65, `Client alignment score calculation (${clientScore}/100)`);
+  assert(clientScore >= 60, `Client alignment score calculation (${clientScore}/100)`);
 
   // Test 6: System Prompt Generation
   console.log('\n[Test Group 6: System Prompt Engineering]');

@@ -197,12 +197,12 @@ export function extractTopicFromPrompt(fullContextText: string): string {
 }
 
 export function calculateTargetWords(durationSec: number): { targetWordCount: number; minWords: number; maxWords: number; maxTokens: number } {
-  if (durationSec <= 20) return { targetWordCount: 40, minWords: 30, maxWords: 55, maxTokens: 130 };
-  if (durationSec <= 35) return { targetWordCount: 80, minWords: 65, maxWords: 95, maxTokens: 220 };
-  if (durationSec <= 50) return { targetWordCount: 125, minWords: 100, maxWords: 145, maxTokens: 320 };
-  if (durationSec <= 75) return { targetWordCount: 165, minWords: 140, maxWords: 190, maxTokens: 420 };
-  if (durationSec <= 105) return { targetWordCount: 245, minWords: 210, maxWords: 280, maxTokens: 620 };
-  return { targetWordCount: 330, minWords: 280, maxWords: 370, maxTokens: 820 };
+  if (durationSec <= 20) return { targetWordCount: 45, minWords: 40, maxWords: 55, maxTokens: 180 };
+  if (durationSec <= 35) return { targetWordCount: 85, minWords: 75, maxWords: 100, maxTokens: 300 };
+  if (durationSec <= 50) return { targetWordCount: 130, minWords: 115, maxWords: 150, maxTokens: 450 };
+  if (durationSec <= 75) return { targetWordCount: 175, minWords: 160, maxWords: 200, maxTokens: 600 };
+  if (durationSec <= 105) return { targetWordCount: 260, minWords: 235, maxWords: 290, maxTokens: 850 };
+  return { targetWordCount: 350, minWords: 315, maxWords: 390, maxTokens: 1100 };
 }
 
 export function calculateClientAlignmentScore(responseText: string, persona: PersonaProfile, targetDurationSec: number = 45): number {
@@ -215,14 +215,19 @@ export function calculateClientAlignmentScore(responseText: string, persona: Per
       if (words.some(w => textLower.includes(w))) matchedCount++;
     }
   }
-  const { targetWordCount } = calculateTargetWords(targetDurationSec);
+  const { targetWordCount, minWords } = calculateTargetWords(targetDurationSec);
   const actualWords = responseText.split(/\s+/).filter(Boolean).length;
-  const diffRatio = Math.abs(actualWords - targetWordCount) / Math.max(targetWordCount, 1);
-  const lengthScore = Math.max(40 - Math.round(diffRatio * 40), 10);
+  let lengthRatio = 1.0;
+  if (actualWords < minWords) {
+    lengthRatio = actualWords / minWords;
+  } else if (actualWords > targetWordCount * 1.25) {
+    lengthRatio = (targetWordCount * 1.25) / actualWords;
+  }
+  const lengthScore = Math.round(lengthRatio * 40);
   const totalTraits = persona.keyTraits?.length || 1;
   const traitScore = Math.min((matchedCount / totalTraits) * 40, 40);
   const relevanceScore = textLower.length > 50 ? 20 : 10;
-  return Math.max(Math.min(Math.round(lengthScore + traitScore + relevanceScore), 99), 65);
+  return Math.max(Math.min(Math.round(lengthScore + traitScore + relevanceScore), 99), 60);
 }
 
 /**
@@ -618,60 +623,125 @@ export class StorageProxy {
         }
       } else {
         const openRouterModelId = getOpenRouterModelId(selectedModel);
-        let response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
+        const headers = {
+          'Authorization': `Bearer ${userApiKey}`,
+          'HTTP-Referer': 'https://meetpersona.ai',
+          'X-Title': 'MeetPersona AI',
+          'Content-Type': 'application/json'
+        };
+
+        const tryOpenRouterCall = async (modelId: string) => {
+          try {
+            const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                model: modelId,
+                messages: [
+                  { role: 'system', content: systemPrompt },
+                  { role: 'user', content: promptText }
+                ],
+                max_tokens: maxTokens,
+                temperature: 0.7
+              })
+            });
+            if (res.ok) {
+              const data = await res.json();
+              const text = data?.choices?.[0]?.message?.content?.trim();
+              if (text) return { text, modelId };
+            } else {
+              const errBody = await res.text().catch(() => '');
+              console.warn(`[MeetPersona AI] OpenRouter model ${modelId} failed (HTTP ${res.status}): ${errBody}`);
+            }
+          } catch (err) {
+            console.warn(`[MeetPersona AI] OpenRouter model ${modelId} fetch exception:`, err);
+          }
+          return null;
+        };
+
+        let callResult = await tryOpenRouterCall(openRouterModelId);
+
+        if (!callResult && openRouterModelId !== 'google/gemini-2.0-flash-lite-preview-02-05:free') {
+          console.info(`[MeetPersona AI] Retrying with fallback model google/gemini-2.0-flash-lite-preview-02-05:free...`);
+          callResult = await tryOpenRouterCall('google/gemini-2.0-flash-lite-preview-02-05:free');
+        }
+
+        if (!callResult && openRouterModelId !== 'google/gemma-2-9b-it:free') {
+          console.info(`[MeetPersona AI] Retrying with fallback model google/gemma-2-9b-it:free...`);
+          callResult = await tryOpenRouterCall('google/gemma-2-9b-it:free');
+        }
+
+        if (callResult) {
+          responseText = callResult.text;
+          modelUsed = `OpenRouter (${callResult.modelId})`;
+          console.info(`[MeetPersona AI] OpenRouter response generation succeeded (${callResult.text.split(/\s+/).length} words).`);
+        } else {
+          responseText = `[API ERROR] The selected model "${selectedModel}" returned an error from OpenRouter. Please select "Google Gemini 2.0 Flash Lite [Free]" from the model dropdown and verify your API key is active.`;
+        }
+      }
+
+      // Auto-expansion check: if responseText is shorter than minWords (at least 90% of target), run expansion pass
+      if (responseText && !responseText.startsWith('[API') && responseText.split(/\s+/).filter(Boolean).length < minWords) {
+        const currentWordCount = responseText.split(/\s+/).filter(Boolean).length;
+        console.info(`[MeetPersona AI] Response length (${currentWordCount} words) is below min bound (${minWords} words) for ${targetDurationSec}s target. Requesting expansion...`);
+        
+        const expansionPrompt = `Your initial response was ${currentWordCount} words, but the target speech duration of ${targetDurationSec} seconds REQUIRES a minimum of ${minWords} words (~${targetWordCount} words).
+
+=== YOUR INITIAL RESPONSE ===
+${responseText}
+
+=== EXPANSION DIRECTIVE ===
+As ${persona.name} (${persona.role}), expand your response to be between ${minWords} and ${maxWords} words. Provide additional technical depth, architectural trade-offs, implementation details, and pragmatic engineering examples. Keep your authentic voice and output ONLY the complete, expanded response (${minWords}–${maxWords} words):`;
+
+        if (isGeminiProvider) {
+          let chosenModel = selectedModel.replace(/^(google\/|models\/)/i, '').trim();
+          if (!chosenModel || chosenModel.includes('/') || chosenModel.includes(':')) chosenModel = 'gemini-1.5-flash';
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${chosenModel}:generateContent?key=${userApiKey}`;
+          const expRes = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: `${systemPrompt}\n\n${expansionPrompt}` }] }],
+              generationConfig: { temperature: 0.7, maxOutputTokens: maxTokens }
+            })
+          });
+          if (expRes.ok) {
+            const data = await expRes.json();
+            const expText = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+            if (expText && expText.split(/\s+/).filter(Boolean).length > currentWordCount) {
+              responseText = expText;
+              console.info(`[MeetPersona AI] Response successfully expanded to ${expText.split(/\s+/).filter(Boolean).length} words.`);
+            }
+          }
+        } else {
+          const headers = {
             'Authorization': `Bearer ${userApiKey}`,
             'HTTP-Referer': 'https://meetpersona.ai',
             'X-Title': 'MeetPersona AI',
             'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: openRouterModelId,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: promptText }
-            ],
-            max_tokens: maxTokens,
-            temperature: 0.7
-          })
-        });
-
-        // Automatic model fallback retry if selected model on OpenRouter returns error
-        if (!response.ok && openRouterModelId !== 'google/gemini-2.0-flash-lite-preview-02-05:free') {
-          const errBody = await response.text().catch(() => '');
-          console.warn(`[MeetPersona AI] OpenRouter notice for ${openRouterModelId} (${response.status}): ${errBody}. Retrying with google/gemini-2.0-flash-lite-preview-02-05:free...`);
-          response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          };
+          const openRouterModelId = getOpenRouterModelId(selectedModel);
+          const expRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${userApiKey}`,
-              'HTTP-Referer': 'https://meetpersona.ai',
-              'X-Title': 'MeetPersona AI',
-              'Content-Type': 'application/json'
-            },
+            headers,
             body: JSON.stringify({
-              model: 'google/gemini-2.0-flash-lite-preview-02-05:free',
+              model: openRouterModelId,
               messages: [
                 { role: 'system', content: systemPrompt },
-                { role: 'user', content: promptText }
+                { role: 'user', content: expansionPrompt }
               ],
               max_tokens: maxTokens,
               temperature: 0.7
             })
           });
-        }
-
-        if (response.ok) {
-          const data = await response.json();
-          const text = data?.choices?.[0]?.message?.content?.trim();
-          if (text) {
-            responseText = text;
-            modelUsed = `OpenRouter (${openRouterModelId})`;
-            console.info(`[MeetPersona AI] OpenRouter API response generation succeeded (${text.split(/\s+/).length} words).`);
+          if (expRes.ok) {
+            const data = await expRes.json();
+            const expText = data?.choices?.[0]?.message?.content?.trim();
+            if (expText && expText.split(/\s+/).filter(Boolean).length > currentWordCount) {
+              responseText = expText;
+              console.info(`[MeetPersona AI] Response successfully expanded to ${expText.split(/\s+/).filter(Boolean).length} words.`);
+            }
           }
-        } else {
-          const errBody = await response.text().catch(() => '');
-          console.warn(`[MeetPersona AI] OpenRouter API returned error (${response.status}):`, errBody);
         }
       }
     } catch (e: any) {
@@ -679,7 +749,7 @@ export class StorageProxy {
     }
 
     if (!responseText) {
-      responseText = `I have analyzed the technical query regarding "${topicAddressed}". Based on ${persona.name}'s profile as ${persona.role}, local-first architecture and spatial data processing require strict offline persistence and multi-model alignment.`;
+      responseText = `[API ERROR] Unable to generate response for target duration ${targetDurationSec}s. Please verify your OpenRouter or Gemini API key.`;
     }
 
     const alignmentConfidence = calculateClientAlignmentScore(responseText, persona, targetDurationSec);
