@@ -117,7 +117,23 @@ export async function validateApiKey(key: string, provider: 'openrouter' | 'gemi
                 };
               });
 
-              const freeModels = allModels.filter((m: any) => m.isFree).slice(0, 3).map((m: any) => ({ ...m, group: 'Free' as const }));
+              const VERIFIED_FREE_MODEL_IDS = [
+                'google/gemini-2.0-flash-lite-preview-02-05:free',
+                'meta-llama/llama-3.3-70b-instruct:free',
+                'google/gemma-2-9b-it:free',
+                'qwen/qwen-2.5-72b-instruct:free',
+                'deepseek/deepseek-r1:free'
+              ];
+              const freeCandidates = allModels.filter((m: any) => m.isFree);
+              freeCandidates.sort((a: any, b: any) => {
+                const indexA = VERIFIED_FREE_MODEL_IDS.indexOf(a.id);
+                const indexB = VERIFIED_FREE_MODEL_IDS.indexOf(b.id);
+                if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+                if (indexA !== -1) return -1;
+                if (indexB !== -1) return 1;
+                return 0;
+              });
+              const freeModels = freeCandidates.slice(0, 5).map((m: any) => ({ ...m, group: 'Free' as const }));
               
               const paidModels = allModels.filter((m: any) => !m.isFree).sort((a: any, b: any) => a.price - b.price);
               const totalPaid = paidModels.length;
@@ -661,14 +677,21 @@ export class StorageProxy {
 
         let callResult = await tryOpenRouterCall(openRouterModelId);
 
-        if (!callResult && openRouterModelId !== 'google/gemini-2.0-flash-lite-preview-02-05:free') {
-          console.info(`[MeetPersona AI] Retrying with fallback model google/gemini-2.0-flash-lite-preview-02-05:free...`);
-          callResult = await tryOpenRouterCall('google/gemini-2.0-flash-lite-preview-02-05:free');
-        }
+        const FALLBACK_MODELS = [
+          'google/gemini-2.0-flash-lite-preview-02-05:free',
+          'meta-llama/llama-3.3-70b-instruct:free',
+          'google/gemma-2-9b-it:free',
+          'qwen/qwen-2.5-72b-instruct:free',
+          'google/gemini-2.0-flash-lite-preview-02-05',
+          'meta-llama/llama-3.3-70b-instruct'
+        ];
 
-        if (!callResult && openRouterModelId !== 'google/gemma-2-9b-it:free') {
-          console.info(`[MeetPersona AI] Retrying with fallback model google/gemma-2-9b-it:free...`);
-          callResult = await tryOpenRouterCall('google/gemma-2-9b-it:free');
+        for (const fallbackId of FALLBACK_MODELS) {
+          if (callResult) break;
+          if (openRouterModelId !== fallbackId) {
+            console.info(`[MeetPersona AI] Retrying with fallback model ${fallbackId}...`);
+            callResult = await tryOpenRouterCall(fallbackId);
+          }
         }
 
         if (callResult) {
