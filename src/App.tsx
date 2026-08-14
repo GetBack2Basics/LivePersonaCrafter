@@ -13,6 +13,9 @@ export function App() {
     lastSyncStatus,
     selectedModel,
     setSelectedModel,
+    lastLlmCalls,
+    aiTranscript,
+    setAiTranscript,
     addTranscriptEntry,
     updateTranscriptEntry,
     switchActivePersona,
@@ -54,6 +57,9 @@ export function App() {
             isSyncing={isSyncing}
             onAddPersona={addPersona}
             onUpdatePersona={updatePersona}
+            lastLlmCalls={lastLlmCalls}
+            aiTranscript={aiTranscript}
+            onClearAiTranscript={() => setAiTranscript('')}
           />
         ) : (
           <IssueTrackerPage />

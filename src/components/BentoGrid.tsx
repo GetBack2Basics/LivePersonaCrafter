@@ -6,7 +6,7 @@ import {
   BrainCircuit,
   HardDrive
 } from 'lucide-react';
-import type { EngineState, PersonaProfile, TranscriptEntry } from '../types';
+import type { EngineState, PersonaProfile, TranscriptEntry, LlmCallTrace } from '../types';
 import { MeetPersonaAICoreEngine } from './MeetPersonaAICoreEngine';
 
 interface BentoGridProps {
@@ -24,6 +24,9 @@ interface BentoGridProps {
   isSyncing?: boolean;
   onAddPersona: (persona: PersonaProfile) => void;
   onUpdatePersona: (persona: PersonaProfile) => void;
+  lastLlmCalls?: LlmCallTrace[];
+  aiTranscript?: string;
+  onClearAiTranscript?: () => void;
 }
 
 export function BentoGrid({ 
@@ -39,7 +42,10 @@ export function BentoGrid({
   syncStatus,
   isSyncing,
   onAddPersona,
-  onUpdatePersona
+  onUpdatePersona,
+  lastLlmCalls = [],
+  aiTranscript = '',
+  onClearAiTranscript
 }: BentoGridProps) {
   const { activePersona, personas, transcripts, botResponses, feedbacks, stats } = state;
 
@@ -130,56 +136,21 @@ export function BentoGrid({
         isSyncing={isSyncing}
         onAddPersona={onAddPersona}
         onUpdatePersona={onUpdatePersona}
+        lastLlmCalls={lastLlmCalls}
+        aiTranscript={aiTranscript}
+        onClearAiTranscript={onClearAiTranscript}
       />
 
       {/* Bottom Bento Row: Live Telemetry & Persona Knowledge Base */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Card 1: Active Persona Profile Library */}
-        <div className="glass-panel p-5 rounded-2xl space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-xs uppercase tracking-wider text-zinc-400 flex items-center gap-2">
-              <Users className="w-4 h-4 text-indigo-400" />
-              Active Persona
-            </h3>
-            <span className="text-[10px] text-zinc-500">{personas.length} Active Target</span>
-          </div>
-
-          <div className="space-y-2">
-            {personas.map((p) => (
-              <div
-                key={p.id}
-                onClick={() => onSwitchPersona(p)}
-                className={`p-3 rounded-xl border cursor-pointer transition-all ${
-                  p.id === activePersona.id
-                    ? 'bg-indigo-950/40 border-indigo-500/50 text-indigo-100'
-                    : 'bg-zinc-950/60 border-zinc-800/80 text-zinc-400 hover:border-zinc-700'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <img src={p.avatarUrl} alt={p.name} className="w-8 h-8 rounded-full object-cover" />
-                  <div className="flex-1 min-w-0">
-                    <span className="font-bold text-xs text-zinc-200 block truncate">{p.name}</span>
-                    <span className="text-[10px] text-indigo-400 block truncate">{p.role}</span>
-                  </div>
-                  {p.id === activePersona.id && (
-                    <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-500/30">
-                      Active
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Card 2: Real Local Store Telemetry */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Card 1: Firestore Cloud Telemetry */}
         <div className="glass-panel p-5 rounded-2xl space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-xs uppercase tracking-wider text-zinc-400 flex items-center gap-2">
               <HardDrive className="w-4 h-4 text-cyan-400" />
-              Local Store Telemetry
+              Firestore Cloud Telemetry
             </h3>
-            <span className="text-[10px] text-cyan-400 font-mono">IndexedDB Ready</span>
+            <span className="text-[10px] text-cyan-400 font-mono">Firestore DB Active</span>
           </div>
 
           <div className="p-4 bg-zinc-950 rounded-xl border border-zinc-800 space-y-2.5 text-xs">
@@ -196,15 +167,15 @@ export function BentoGrid({
               <span className="font-bold text-emerald-400">{feedbacks.length} submissions</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-zinc-400">Local DB Status:</span>
+              <span className="text-zinc-400">Database Engine:</span>
               <span className="font-semibold text-cyan-400">
-                {syncStatus === 'CLOUD_SYNCED' ? 'Cloud Synced' : 'IndexedDB Offline Persistence'}
+                {syncStatus === 'CLOUD_SYNCED' ? 'Firestore Cloud Synced' : 'Firestore DB Active'}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Card 3: Persona Portfolio & Knowledge Base */}
+        {/* Card 2: Persona Portfolio & Knowledge Base */}
         <div className="glass-panel p-5 rounded-2xl space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-xs uppercase tracking-wider text-zinc-400 flex items-center gap-2">

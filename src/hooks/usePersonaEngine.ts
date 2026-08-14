@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { EngineState, PersonaProfile, TranscriptEntry, BotResponse, ParticipantFeedback } from '../types';
-import { StorageProxy } from '../engine/storageProxy';
+import type { EngineState, PersonaProfile, TranscriptEntry, BotResponse, ParticipantFeedback, LlmCallTrace } from '../types';
+import { StorageProxy, extractQuestionViaLLM } from '../engine/storageProxy';
 import { IndexedDBStore } from '../db/indexedDBStore';
 import { FirebaseStore } from '../db/firebaseConfig';
 import { INITIAL_PERSONAS, INITIAL_SESSION, INITIAL_TRANSCRIPTS, INITIAL_BOT_RESPONSES, INITIAL_FEEDBACKS } from '../data/initialData';
@@ -16,40 +16,42 @@ export function usePersonaEngine() {
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncStatus, setLastSyncStatus] = useState<'LOCAL_ONLY' | 'INDEXEDDB' | 'CLOUD_SYNCED'>('INDEXEDDB');
-  const [selectedModel, setSelectedModel] = useState<string>('google/gemma-2-9b-it:free');
+  const [selectedModel, setSelectedModel] = useState<string>('google/gemini-2.0-flash-lite-preview-02-05:free');
 
-  // Hydrate state from IndexedDB on initial mount only if personas match GetBack2Basics
+  // LLM call traces — shown as expandable cards in the UI
+  const [lastLlmCalls, setLastLlmCalls] = useState<LlmCallTrace[]>([]);
+  // AI Transcript — the LLM-processed/refined question extracted from raw speech
+  const [aiTranscript, setAiTranscript] = useState<string>('');
+
+  // Hydrate state from Firestore on initial mount
   useEffect(() => {
     let isMounted = true;
     (async () => {
-      const dbData = await IndexedDBStore.getAllData();
-      const hasGetBack2Basics = dbData.personas.some((p) => p.name === 'GetBack2Basics');
-
-      if (!hasGetBack2Basics) {
-        // Purge legacy fake cached data from IndexedDB
-        await IndexedDBStore.clearDatabase();
-        return;
-      }
-
-      if (isMounted && dbData.transcripts.length > 0) {
-        setState((prev) => ({
-          ...prev,
-          transcripts: dbData.transcripts.length >= prev.transcripts.length ? dbData.transcripts : prev.transcripts,
-          botResponses: dbData.botResponses.length >= prev.botResponses.length ? dbData.botResponses : prev.botResponses,
-          feedbacks: dbData.feedbacks.length >= prev.feedbacks.length ? dbData.feedbacks : prev.feedbacks
-        }));
+      try {
+        const cloudData = await FirebaseStore.fetchAllCloudData();
+        if (isMounted && cloudData) {
+          setState((prev) => ({
+            ...prev,
+            transcripts: cloudData.transcripts && cloudData.transcripts.length > 0 ? cloudData.transcripts : prev.transcripts,
+            personas: cloudData.personas && cloudData.personas.length > 0 ? cloudData.personas : prev.personas,
+            botResponses: cloudData.botResponses && cloudData.botResponses.length > 0 ? cloudData.botResponses : prev.botResponses,
+            feedbacks: cloudData.feedbacks && cloudData.feedbacks.length > 0 ? cloudData.feedbacks : prev.feedbacks
+          }));
+        }
+      } catch (e) {
+        console.warn('Firestore initial hydration notice:', e);
       }
     })();
     return () => { isMounted = false; };
   }, []);
 
-  // Sync state changes to LocalStorage, IndexedDB, and Firebase Cloud asynchronously
+  // Sync state changes to Firestore asynchronously
   const persistState = useCallback(async (newState: EngineState) => {
     StorageProxy.saveState(newState);
     setIsSyncing(true);
 
     try {
-      const indexedDbOk = await IndexedDBStore.saveSnapshot({
+      const cloudOk = await FirebaseStore.syncSnapshotToCloud({
         sessions: [newState.session],
         transcripts: newState.transcripts,
         personas: newState.personas,
@@ -57,20 +59,24 @@ export function usePersonaEngine() {
         feedbacks: newState.feedbacks
       });
 
-      const cloudOk = await FirebaseStore.syncSnapshotToCloud({
+      await IndexedDBStore.saveSnapshot({
         sessions: [newState.session],
+        transcripts: newState.transcripts,
+        personas: newState.personas,
+        botResponses: newState.botResponses,
         feedbacks: newState.feedbacks
-      });
+      }).catch(() => {});
 
-      setLastSyncStatus(cloudOk ? 'CLOUD_SYNCED' : indexedDbOk ? 'INDEXEDDB' : 'LOCAL_ONLY');
+      setLastSyncStatus(cloudOk ? 'CLOUD_SYNCED' : 'LOCAL_ONLY');
     } catch (e) {
-      console.warn('Persistence sync notice:', e);
+      console.warn('Firestore sync notice:', e);
     } finally {
       setTimeout(() => setIsSyncing(false), 300);
     }
   }, []);
 
   const addTranscriptEntry = useCallback((entry: TranscriptEntry) => {
+    FirebaseStore.saveTranscript(entry);
     setState((prev) => {
       const updatedTranscripts = [...prev.transcripts, entry];
       const next: EngineState = {
@@ -87,6 +93,7 @@ export function usePersonaEngine() {
   }, [persistState]);
 
   const addPersona = useCallback((persona: PersonaProfile) => {
+    FirebaseStore.savePersona(persona);
     setState((prev) => {
       const next = { ...prev, personas: [...prev.personas, persona], activePersona: persona };
       persistState(next);
@@ -123,6 +130,19 @@ export function usePersonaEngine() {
     const activePersona = state.activePersona;
     const modelToUse = overrideModel || selectedModel;
 
+    // === STAGE 1: LLM Question Extraction Call ===
+    // Use the LLM to intelligently extract/refine the question from raw audio transcript
+    const { extractedQuestion, llmCallTrace: questionTrace } = await extractQuestionViaLLM(
+      prompt,
+      activePersona.name,
+      activePersona.role,
+      modelToUse
+    );
+
+    // Update AI Transcript with the LLM-refined question
+    setAiTranscript(extractedQuestion);
+
+    // Record the raw spoken transcript entry (unchanged)
     const userTranscript: TranscriptEntry = {
       transcriptId: `tr-${Date.now()}`,
       sessionId: state.session.sessionId,
@@ -134,13 +154,20 @@ export function usePersonaEngine() {
       sentiment: 'curious'
     };
 
-    const { responseText, topicAddressed, alignmentConfidence, latencyMs } = await StorageProxy.generatePersonaResponse(
+    // === STAGE 2: Persona Response Generation Call ===
+    // Use the AI-refined question as the actual prompt for the persona
+    const { responseText, topicAddressed, alignmentConfidence, latencyMs, llmCallTrace: responseTrace } = await StorageProxy.generatePersonaResponse(
       activePersona,
-      prompt,
+      extractedQuestion,  // Use the AI-extracted question, not raw transcript
       state.transcripts.slice(-5),
       modelToUse,
       targetDurationSec
     );
+
+    // Track both LLM call traces for UI display & save to Firestore
+    setLastLlmCalls([questionTrace, responseTrace]);
+    FirebaseStore.saveLlmTrace(questionTrace);
+    FirebaseStore.saveLlmTrace(responseTrace);
 
     const botTranscript: TranscriptEntry = {
       transcriptId: `tr-${Date.now() + 1}`,
@@ -151,6 +178,9 @@ export function usePersonaEngine() {
       timestamp: new Date().toISOString(),
       sentiment: 'neutral'
     };
+
+    FirebaseStore.saveTranscript(userTranscript);
+    FirebaseStore.saveTranscript(botTranscript);
 
     const newResponse: BotResponse = {
       responseId: `resp-${Date.now()}`,
@@ -166,6 +196,8 @@ export function usePersonaEngine() {
       createdAt: new Date().toISOString(),
       feedbackSubmitted: false
     };
+
+    FirebaseStore.saveBotResponse(newResponse);
 
     setState((prev) => {
       const updatedTranscripts = [...prev.transcripts, userTranscript, botTranscript];
@@ -210,6 +242,8 @@ export function usePersonaEngine() {
       submittedAt: new Date().toISOString()
     };
 
+    FirebaseStore.saveFeedback(feedback);
+
     setState((prev) => {
       const updatedFeedbacks = [feedback, ...prev.feedbacks];
       const sum = updatedFeedbacks.reduce((acc, f) => acc + f.alignmentScore, 0);
@@ -245,7 +279,17 @@ export function usePersonaEngine() {
   }, [persistState]);
 
   const resetEngineState = useCallback(() => {
+    // Preserve user API key credentials during reset to default
+    const apiKey = localStorage.getItem('LPC_API_KEY');
+    const apiProvider = localStorage.getItem('LPC_API_PROVIDER');
+    const apiVerified = localStorage.getItem('LPC_VERIFIED_KEY');
+
     localStorage.clear();
+
+    if (apiKey) localStorage.setItem('LPC_API_KEY', apiKey);
+    if (apiProvider) localStorage.setItem('LPC_API_PROVIDER', apiProvider);
+    if (apiVerified) localStorage.setItem('LPC_VERIFIED_KEY', apiVerified);
+
     IndexedDBStore.clearDatabase();
     const cleanState: EngineState = {
       session: INITIAL_SESSION,
@@ -291,6 +335,9 @@ export function usePersonaEngine() {
     lastSyncStatus,
     selectedModel,
     setSelectedModel: handleSetSelectedModel,
+    lastLlmCalls,
+    aiTranscript,
+    setAiTranscript,
     addTranscriptEntry,
     updateTranscriptEntry,
     switchActivePersona,

@@ -72,6 +72,18 @@ export interface EngineStats {
   openRouterStatus: 'ONLINE' | 'STANDBY' | 'SIMULATED';
 }
 
+/** Represents a single captured LLM API call — shown as clickable/expandable cards in the UI */
+export interface LlmCallTrace {
+  traceId: string;
+  type: 'QUESTION_EXTRACTION' | 'PERSONA_RESPONSE';
+  model: string;
+  systemPrompt: string;
+  userMessage: string;
+  rawResponse: string;
+  latencyMs: number;
+  timestamp: string;
+}
+
 export type IssueCategory = 'BUG' | 'FEATURE' | 'ENHANCEMENT' | 'UI_UX' | 'PERFORMANCE';
 export type IssueSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type IssueCriticality = 'P3_LOW' | 'P2_MEDIUM' | 'P1_HIGH' | 'P0_BLOCKER';

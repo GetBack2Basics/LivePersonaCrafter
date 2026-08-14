@@ -4,7 +4,8 @@ import {
   calculateTargetWords, 
   buildSystemPrompt, 
   getOpenRouterModelId,
-  calculateClientAlignmentScore
+  calculateClientAlignmentScore,
+  parseCoreQuestionFromJsonResponse
 } from '../engine/storageProxy';
 import { LLMOrchestrator } from '../../server/llmOrchestrator';
 import { INITIAL_PERSONAS } from '../data/initialData';
@@ -36,7 +37,7 @@ async function runTests() {
 
   // Test 2: OpenRouter & Gemini Model ID Mapping
   console.log('\n[Test Group 2: Model Mapping & Catalog]');
-  assert(getOpenRouterModelId('') === 'google/gemma-2-9b-it:free', 'Default model ID fallback to Gemma 2 9B Free');
+  assert(getOpenRouterModelId('') === 'google/gemini-2.0-flash-lite-preview-02-05:free', 'Default model ID fallback to Gemini 2.0 Flash Lite Free');
   assert(getOpenRouterModelId('deepseek-r1-free') === 'deepseek/deepseek-r1:free', 'Model ID mapping for DeepSeek R1');
   assert(getOpenRouterModelId('gemini-2.5-flash') === 'google/gemini-2.5-flash', 'Model ID mapping for Gemini 2.5 Flash');
   assert(getOpenRouterModelId('gemini-2.0-flash') === 'google/gemini-2.0-flash-lite-preview-02-05:free', 'Model ID mapping for Gemini 2.0 Flash');
@@ -53,6 +54,16 @@ async function runTests() {
   assert(parsed1 === 'How to optimize 3D splat depth sorting?', 'Parses core question from conversational voice filler');
   const parsed2 = parseQuestionFromTranscript('I wanted to ask what is the best way to convert GDA94 to GDA2020?');
   assert(parsed2 === 'What is the best way to convert GDA94 to GDA2020?', 'Strips preamble and extracts question');
+
+  // Test 2.6: JSON Schema Core Question Extraction Parser
+  console.log('\n[Test Group 2.6: JSON Schema Core Question Extraction Parser]');
+  const sampleJsonOutput = `\`\`\`json
+{
+  "core_question": "What happens—and how do we prepare—if AI becomes smarter than humans within the next 20 years?"
+}
+\`\`\``;
+  const extractedQ = parseCoreQuestionFromJsonResponse(sampleJsonOutput);
+  assert(extractedQ === 'What happens—and how do we prepare—if AI becomes smarter than humans within the next 20 years?', 'Extracts core_question cleanly from JSON schema response');
 
   // Test 3: Target Word & Token Calculation
   console.log('\n[Test Group 3: Duration & Token Budget Math]');

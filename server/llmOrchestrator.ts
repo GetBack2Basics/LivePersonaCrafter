@@ -273,10 +273,10 @@ ${dialogueHistory}
     const selectedObj = models.find(m => m.id === selectedModel) || models[0];
 
     const isGeminiKeyFormat = Boolean(userProvidedApiKey && userProvidedApiKey.startsWith('AIza'));
-    const isOpenRouterKeyFormat = Boolean(userProvidedApiKey && userProvidedApiKey.startsWith('sk-or-'));
+    const isExplicitGeminiModel = selectedModel.toLowerCase().includes('gemini') && !selectedModel.includes(':free') && !selectedModel.includes('/');
 
-    const geminiKey = isGeminiKeyFormat ? userProvidedApiKey : undefined;
-    const openRouterKey = isOpenRouterKeyFormat ? userProvidedApiKey : undefined;
+    const geminiKey = isGeminiKeyFormat ? userProvidedApiKey : process.env.GEMINI_API_KEY;
+    const openRouterKey = (!isGeminiKeyFormat && userProvidedApiKey) ? userProvidedApiKey : (process.env.OPENROUTER_API_KEY || userProvidedApiKey);
 
     const isGeminiModel = selectedModel.toLowerCase().includes('gemini') || selectedObj.provider === 'Gemini';
 
@@ -373,8 +373,10 @@ ${dialogueHistory}
           body: JSON.stringify({
             model: openRouterModelId,
             messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: `DEBATE TRANSCRIPT:\n<user_input>\n${contextPrompt}\n</user_input>\nProvide a ${targetDurationSec}s (${targetWordCount}+ word) technical response without repeating the question.` }
+              { 
+                role: 'user', 
+                content: `=== CORE QUESTION TO ANSWER & DEBATE ===\n<user_input>\n${contextPrompt}\n</user_input>\n\n=== SPOKEN AUDIO TRANSCRIPT HISTORY ===\n${recentTranscripts && recentTranscripts.length > 0 ? recentTranscripts.map(t => `[${t.speakerRole.toUpperCase()}] ${t.speaker}: ${t.text}`).join('\n') : 'No prior audio transcript.'}\n\n=== PERSONA RESPONSE DIRECTIVE ===\nAs ${persona.name} (${persona.role}), provide a direct ${targetDurationSec} second (${targetWordCount}+ word) technical response answering the question above in your authentic persona voice. Start directly with your position without repeating the question.`.trim()
+              }
             ],
             max_tokens: maxTokens
           })

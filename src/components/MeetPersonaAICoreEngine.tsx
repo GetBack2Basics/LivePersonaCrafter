@@ -36,10 +36,10 @@ import {
   Eraser,
   CornerDownLeft
 } from "lucide-react";
-import type { EngineState, TranscriptEntry } from "../types";
+import type { EngineState, TranscriptEntry, LlmCallTrace } from "../types";
 import { useFeedbackCollector } from "../hooks/useFeedbackCollector";
 import { useLiveSpeechRecognition } from "../hooks/useLiveSpeechRecognition";
-import { StorageProxy, getUserApiKey, setUserApiKey, validateApiKey, isApiKeyVerifiedLocally } from "../engine/storageProxy";
+import { StorageProxy, getUserApiKey, setUserApiKey, validateApiKey, isApiKeyVerifiedLocally, extractQuestionViaLLM } from "../engine/storageProxy";
 import { parseQuestionFromTranscript } from "../utils/transcriptParser";
 import type { ApiModel } from "../engine/storageProxy";
 
@@ -80,6 +80,9 @@ interface CoreEngineProps {
   isSyncing?: boolean;
   onAddPersona?: (persona: any) => void;
   onUpdatePersona?: (persona: any) => void;
+  lastLlmCalls?: LlmCallTrace[];
+  aiTranscript?: string;
+  onClearAiTranscript?: () => void;
 }
 
 export function MeetPersonaAICoreEngine({ 
@@ -95,19 +98,24 @@ export function MeetPersonaAICoreEngine({
   syncStatus = 'INDEXEDDB',
   isSyncing = false,
   onAddPersona,
-  onUpdatePersona
+  onUpdatePersona,
+  lastLlmCalls = [],
+  aiTranscript = '',
+  onClearAiTranscript
 }: CoreEngineProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [customPrompt, setCustomPrompt] = useState("");
   const [targetDurationSec, setTargetDurationSec] = useState<number>(45);
-  const [latencyLeeway, setLatencyLeeway] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('HIGH');
+  const [latencyMsBudget, setLatencyMsBudget] = useState<number>(3000);
   const [activeTab, setActiveTab] = useState<'MATRIX' | 'TRANSCRIPT' | 'FEEDBACK' | 'LLM_LOGS' | 'ARCH'>('MATRIX');
   const [copiedLink, setCopiedLink] = useState(false);
   const [activeFeedbackResponseId, setActiveFeedbackResponseId] = useState<string | null>(null);
   const [newFeedbackScore, setNewFeedbackScore] = useState<number>(5);
   const [newFeedbackComment, setNewFeedbackComment] = useState("");
+  // Expanded LLM call trace card (by traceId)
+  const [expandedTraceId, setExpandedTraceId] = useState<string | null>(null);
 
   // Evaluator list — defaults to persona name; persisted in localStorage
   const EVALUATORS_KEY = 'LPC_EVALUATOR_LIST';
@@ -175,6 +183,22 @@ export function MeetPersonaAICoreEngine({
     } else {
       setAvailableModels([]);
     }
+
+    if (result.isValid) {
+      const isGeminiKey = cleanKey.startsWith('AIza');
+      const isOpenRouterKey = cleanKey.startsWith('sk-or-');
+      
+      if (isOpenRouterKey || (!isGeminiKey && selectedProvider === 'openrouter')) {
+        setSelectedProvider('openrouter');
+        localStorage.setItem('LPC_API_PROVIDER', 'openrouter');
+        const firstFree = result.models?.find(m => m.group === 'Free');
+        onSelectModel(firstFree ? firstFree.id : 'google/gemini-2.0-flash-lite-preview-02-05:free');
+      } else {
+        setSelectedProvider('gemini');
+        localStorage.setItem('LPC_API_PROVIDER', 'gemini');
+        onSelectModel('gemini-1.5-flash');
+      }
+    }
   };
 
   useEffect(() => {
@@ -183,6 +207,9 @@ export function MeetPersonaAICoreEngine({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Full Audio Transcript Session State (Live stream when mic is on, Editable when mic is off)
+  const [fullTranscript, setFullTranscript] = useState<string>('');
 
   // Device Microphone Speech Recognition Hook
   const { 
@@ -194,10 +221,10 @@ export function MeetPersonaAICoreEngine({
     stopTranscription 
   } = useLiveSpeechRecognition({
     sessionId: state.session.sessionId,
-    onTranscriptAdded: onAddTranscript,
-    onAutoTrigger: (spokenText) => {
-      if (spokenText && spokenText.trim() && hasValidKey) {
-        setCustomPrompt((prev) => prev ? prev + " " + spokenText.trim() : spokenText.trim());
+    onTranscriptAdded: (entry) => {
+      onAddTranscript(entry);
+      if (entry.text && entry.speakerRole === 'human') {
+        setFullTranscript((prev) => prev ? `${prev} ${entry.text.trim()}` : entry.text.trim());
       }
     }
   });
@@ -221,8 +248,44 @@ export function MeetPersonaAICoreEngine({
   };
 
   const [promptError, setPromptError] = useState<string | null>(null);
+  const [isExtractingQuestion, setIsExtractingQuestion] = useState<boolean>(false);
   const [editingTranscriptId, setEditingTranscriptId] = useState<string | null>(null);
   const [editingTranscriptText, setEditingTranscriptText] = useState<string>('');
+
+  const handleCreateQuestion = async () => {
+    const currentText = (fullTranscript + (isTranscribing && interimText ? ' ' + interimText : '')).trim();
+    if (!currentText) {
+      setPromptError('No transcript text found to synthesize question. Please speak into the mic or type in the transcript box.');
+      return;
+    }
+
+    if (promptError) setPromptError(null);
+    setIsExtractingQuestion(true);
+
+    try {
+      const activeKey = apiKeyInput || getUserApiKey();
+      if (activeKey && activeKey.trim()) {
+        // Perform real LLM call to parse transcript and synthesize the core question
+        const { extractedQuestion } = await extractQuestionViaLLM(
+          currentText,
+          state.activePersona.name,
+          state.activePersona.role,
+          selectedModel
+        );
+        setCustomPrompt(extractedQuestion || currentText);
+      } else {
+        // Fallback to local transcript question parser if key is unverified
+        const deducedQ = parseQuestionFromTranscript(currentText);
+        setCustomPrompt(deducedQ || currentText);
+      }
+    } catch (e) {
+      console.warn('LLM question extraction notice, falling back to transcript parser:', e);
+      const deducedQ = parseQuestionFromTranscript(currentText);
+      setCustomPrompt(deducedQ || currentText);
+    } finally {
+      setIsExtractingQuestion(false);
+    }
+  };
 
   const handleTrigger = async (promptOverride?: string) => {
     if (!hasValidKey) {
@@ -434,7 +497,12 @@ export function MeetPersonaAICoreEngine({
                   setSelectedProvider(val);
                   localStorage.setItem('LPC_API_PROVIDER', val);
                   setKeyValidationStatus(null);
-                  setUserApiKey(apiKeyInput, false); // Mark unverified when changing provider
+                  setUserApiKey(apiKeyInput, false);
+                  if (val === 'gemini') {
+                    onSelectModel('gemini-1.5-flash');
+                  } else {
+                    onSelectModel('google/gemini-2.0-flash-lite-preview-02-05:free');
+                  }
                 }}
                 className="bg-transparent text-indigo-400 font-bold focus:outline-none cursor-pointer border-r border-zinc-700 pr-2 mr-1"
               >
@@ -518,22 +586,22 @@ export function MeetPersonaAICoreEngine({
                 ) : (
                   <>
                     <optgroup label="Direct Gemini API Tiers (Gemini Key)" className="bg-zinc-900 text-cyan-400 font-bold">
-                      <option value="gemini-1.5-flash" className="bg-zinc-900 text-zinc-100">Gemini 1.5 Flash</option>
-                      <option value="gemini-1.5-pro" className="bg-zinc-900 text-zinc-100">Gemini 1.5 Pro</option>
+                      <option value="gemini-1.5-flash" className="bg-zinc-900 text-zinc-100">Gemini 1.5 Flash [Free Tier / $0.075/1M]</option>
+                      <option value="gemini-1.5-pro" className="bg-zinc-900 text-zinc-100">Gemini 1.5 Pro [$1.25/1M]</option>
                     </optgroup>
                     <optgroup label="Free Tier Models (OpenRouter Key)" className="bg-zinc-900 text-emerald-400 font-bold">
-                      <option value="google/gemma-2-9b-it:free" className="bg-zinc-900 text-zinc-100">Google Gemma 2 9B (Free - Default)</option>
-                      <option value="google/gemini-3.5-flash-lite" className="bg-zinc-900 text-zinc-100">Gemini 3.5 Flash Lite</option>
-                      <option value="meta-llama/llama-3.1-8b-instruct:free" className="bg-zinc-900 text-zinc-100">Meta Llama 3.1 8B (Free)</option>
-                      <option value="qwen/qwen-2.5-7b-instruct:free" className="bg-zinc-900 text-zinc-100">Qwen 2.5 7B (Free)</option>
+                      <option value="google/gemini-2.0-flash-lite-preview-02-05:free" className="bg-zinc-900 text-zinc-100">Google Gemini 2.0 Flash Lite [Free - Default]</option>
+                      <option value="google/gemma-2-9b-it:free" className="bg-zinc-900 text-zinc-100">Google Gemma 2 9B [Free]</option>
+                      <option value="meta-llama/llama-3.1-8b-instruct:free" className="bg-zinc-900 text-zinc-100">Meta Llama 3.1 8B [Free]</option>
+                      <option value="qwen/qwen-2.5-7b-instruct:free" className="bg-zinc-900 text-zinc-100">Qwen 2.5 7B [Free]</option>
                     </optgroup>
                     <optgroup label="Chinese / Asian Models (OpenRouter Key)" className="bg-zinc-900 text-indigo-400 font-bold">
-                      <option value="deepseek/deepseek-chat" className="bg-zinc-900 text-zinc-100">DeepSeek V3 / R1 (Chinese)</option>
-                      <option value="qwen/qwen-2.5-72b-instruct" className="bg-zinc-900 text-zinc-100">Alibaba Qwen 2.5 72B (Chinese)</option>
+                      <option value="deepseek/deepseek-chat" className="bg-zinc-900 text-zinc-100">DeepSeek V3 / R1 [$0.14/1M]</option>
+                      <option value="qwen/qwen-2.5-72b-instruct" className="bg-zinc-900 text-zinc-100">Alibaba Qwen 2.5 72B [$0.35/1M]</option>
                     </optgroup>
                     <optgroup label="High Performance Models (OpenRouter Key)" className="bg-zinc-900 text-amber-400 font-bold">
-                      <option value="anthropic/claude-3.5-sonnet" className="bg-zinc-900 text-zinc-100">Anthropic Claude 3.5 Sonnet</option>
-                      <option value="openai/gpt-4o" className="bg-zinc-900 text-zinc-100">OpenAI GPT-4o</option>
+                      <option value="anthropic/claude-3.5-sonnet" className="bg-zinc-900 text-zinc-100">Anthropic Claude 3.5 Sonnet [$3.00/1M]</option>
+                      <option value="openai/gpt-4o" className="bg-zinc-900 text-zinc-100">OpenAI GPT-4o [$2.50/1M]</option>
                     </optgroup>
                   </>
                 )}
@@ -561,32 +629,6 @@ export function MeetPersonaAICoreEngine({
               />
             )}
           </div>
-
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-xs">
-            {isSyncing ? (
-              <RefreshCw className="w-3.5 h-3.5 text-amber-400 animate-spin" />
-            ) : syncStatus === 'CLOUD_SYNCED' ? (
-              <CloudCheck className="w-3.5 h-3.5 text-emerald-400" />
-            ) : (
-              <HardDrive className="w-3.5 h-3.5 text-cyan-400" />
-            )}
-            <span className="text-zinc-300 font-medium">
-              {isSyncing ? 'Syncing...' : syncStatus === 'CLOUD_SYNCED' ? 'Cloud Synced' : 'IndexedDB Local Store'}
-            </span>
-          </div>
-
-          {/* Bot Audio Mute Toggle */}
-          <button
-            onClick={onToggleListening}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-              state.isListening 
-                ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30' 
-                : 'bg-zinc-900 text-zinc-400 border-zinc-800'
-            }`}
-          >
-            {state.isListening ? <Radio className="w-3.5 h-3.5 animate-ping text-emerald-400" /> : <VolumeX className="w-3.5 h-3.5 text-zinc-500" />}
-            {state.isListening ? 'Bot Audio Active' : 'Bot Muted'}
-          </button>
 
           <button
             onClick={handleCopyFeedbackLink}
@@ -899,39 +941,42 @@ export function MeetPersonaAICoreEngine({
                 ))}
               </div>
 
-              <div className="pt-2 border-t border-zinc-800/80 space-y-1.5">
+              <div className="pt-2 border-t border-zinc-800/80 space-y-2">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-zinc-400 flex items-center gap-1">
                     <Gauge className="w-3.5 h-3.5 text-amber-400" />
                     Latency Leeway Budget:
                   </span>
-                  <span className="text-amber-400 font-semibold">{latencyLeeway} (High SLA)</span>
+                  <span className="text-amber-400 font-semibold">{latencyMsBudget}ms</span>
                 </div>
                 <div className="grid grid-cols-3 gap-1.5 text-[11px]">
-                  <button
-                    onClick={() => setLatencyLeeway('LOW')}
-                    className={`py-1 rounded text-center font-medium border ${
-                      latencyLeeway === 'LOW' ? 'bg-zinc-800 border-indigo-500 text-white' : 'bg-zinc-950 border-zinc-800 text-zinc-500'
-                    }`}
-                  >
-                    &lt;500ms
-                  </button>
-                  <button
-                    onClick={() => setLatencyLeeway('MEDIUM')}
-                    className={`py-1 rounded text-center font-medium border ${
-                      latencyLeeway === 'MEDIUM' ? 'bg-zinc-800 border-indigo-500 text-white' : 'bg-zinc-950 border-zinc-800 text-zinc-500'
-                    }`}
-                  >
-                    &lt;3000ms
-                  </button>
-                  <button
-                    onClick={() => setLatencyLeeway('HIGH')}
-                    className={`py-1 rounded text-center font-medium border ${
-                      latencyLeeway === 'HIGH' ? 'bg-indigo-950 border-indigo-500 text-indigo-200' : 'bg-zinc-950 border-zinc-800 text-zinc-500'
-                    }`}
-                  >
-                    High Leeway
-                  </button>
+                  {[1000, 3000, 5000].map((ms) => (
+                    <button
+                      key={ms}
+                      onClick={() => setLatencyMsBudget(ms)}
+                      className={`py-1 rounded text-center font-medium border transition-colors ${
+                        latencyMsBudget === ms 
+                          ? 'bg-indigo-950 border-indigo-500 text-indigo-200 font-bold' 
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      {ms}ms {ms === 3000 && '(Default)'}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 pt-1 text-xs">
+                  <span className="text-zinc-500 text-[11px]">Custom Latency:</span>
+                  <input
+                    type="number"
+                    min={100}
+                    max={60000}
+                    step={100}
+                    value={latencyMsBudget}
+                    onChange={(e) => setLatencyMsBudget(Math.max(100, parseInt(e.target.value) || 3000))}
+                    className="w-24 px-2 py-1 bg-zinc-950 border border-zinc-800 rounded text-xs text-zinc-100 font-mono focus:outline-none focus:border-indigo-500"
+                    placeholder="3000"
+                  />
+                  <span className="text-zinc-500 text-[11px]">ms</span>
                 </div>
               </div>
             </div>
@@ -965,6 +1010,79 @@ export function MeetPersonaAICoreEngine({
                 </span>
               </div>
 
+              {/* Full Audio Transcript Element (Live when mic is on, Editable when mic is off) */}
+              <div className="p-4 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4 text-emerald-400" />
+                    <h4 className="font-bold text-xs text-zinc-200 uppercase tracking-wider">
+                      Full Audio Transcript {isTranscribing ? '(Live Recording)' : '(Editable)'}
+                    </h4>
+                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${
+                      isTranscribing 
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 animate-pulse' 
+                        : 'bg-zinc-800 text-zinc-400'
+                    }`}>
+                      {isTranscribing ? 'MIC ON - RECORDING LIVE' : 'MIC CLOSED - EDITABLE'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Create Question Button */}
+                    <button
+                      onClick={handleCreateQuestion}
+                      disabled={isExtractingQuestion}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-indigo-600/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Perform LLM call to parse transcript and synthesize the core question being asked"
+                    >
+                      {isExtractingQuestion ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-300" />
+                          Synthesizing Question...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                          Create Question
+                        </>
+                      )}
+                    </button>
+
+                    {fullTranscript && !isTranscribing && (
+                      <button
+                        onClick={() => setFullTranscript('')}
+                        className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-200 px-2 py-1 bg-zinc-900 rounded border border-zinc-800 transition-colors"
+                        title="Clear full transcript text"
+                      >
+                        <Eraser className="w-3 h-3 text-rose-400" />
+                        Clear Transcript
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {isTranscribing ? (
+                  <div className="w-full p-3 bg-zinc-900/90 border border-emerald-500/40 rounded-xl text-xs text-zinc-100 font-mono min-h-[80px] max-h-[160px] overflow-y-auto space-y-1">
+                    {fullTranscript ? (
+                      <p className="text-zinc-200 leading-relaxed">{fullTranscript}</p>
+                    ) : (
+                      <p className="text-zinc-500 italic">Listening for speech... Speak into your device microphone.</p>
+                    )}
+                    {interimText && (
+                      <p className="text-emerald-400 italic animate-pulse">... {interimText}</p>
+                    )}
+                  </div>
+                ) : (
+                  <textarea
+                    value={fullTranscript}
+                    onChange={(e) => setFullTranscript(e.target.value)}
+                    placeholder="Full transcript from microphone speech will appear here. Once mic is closed, you can freely edit this transcript..."
+                    rows={3}
+                    className="w-full p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none focus:border-emerald-500/70 transition-all placeholder:text-zinc-600 resize-none font-mono font-normal"
+                  />
+                )}
+              </div>
+
               {/* Realtime Interim Spoken Voice Bar */}
               {isTranscribing && interimText && (
                 <div className="p-2.5 bg-emerald-950/40 border border-emerald-500/40 rounded-xl text-xs text-emerald-200 font-mono italic animate-pulse flex items-center gap-2">
@@ -977,7 +1095,7 @@ export function MeetPersonaAICoreEngine({
                 <div className="flex items-center justify-between">
                   <label className="text-xs text-zinc-400 font-medium flex items-center gap-1.5">
                     <MessageSquare className="w-3.5 h-3.5 text-indigo-400" />
-                    Spoken Question or Technical Prompt (Editable):
+                    Technical Query & Debate Trigger (Editable):
                   </label>
                   {customPrompt && (
                     <button
@@ -1031,7 +1149,52 @@ export function MeetPersonaAICoreEngine({
                     {promptError}
                   </p>
                 )}
+
+                {/* AI Transcript Box — LLM-refined question extracted from raw speech */}
+                {aiTranscript && aiTranscript !== customPrompt.trim() && (
+                  <div className="p-3.5 bg-purple-950/40 border border-purple-500/40 rounded-xl space-y-2 shadow-inner shadow-purple-950/20">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+                        <span className="text-[11px] font-bold text-purple-300 uppercase tracking-wider">AI Transcript</span>
+                        <span className="text-[10px] text-purple-400/70 font-mono">(LLM-extracted question from raw speech)</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setCustomPrompt(aiTranscript)}
+                          className="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-bold rounded transition-colors"
+                          title="Use this AI-extracted question as the prompt"
+                        >
+                          Use as Prompt
+                        </button>
+                        {onClearAiTranscript && (
+                          <button
+                            onClick={onClearAiTranscript}
+                            className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-[10px] rounded transition-colors"
+                            title="Clear AI transcript"
+                          >
+                            <Eraser className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-xs text-purple-100 font-medium font-sans leading-relaxed bg-purple-950/60 p-2.5 rounded-lg border border-purple-500/20">
+                      {aiTranscript}
+                    </p>
+                    <div className="flex items-center gap-1.5 text-[10px] text-purple-400/60 font-mono">
+                      <span>Stage 1 LLM Call complete</span>
+                      <span>·</span>
+                      <button
+                        onClick={() => setActiveTab('TRANSCRIPT')}
+                        className="text-purple-400 hover:text-purple-200 underline underline-offset-2"
+                      >
+                        View LLM call details in Transcript tab →
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
+
 
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1078,10 +1241,16 @@ export function MeetPersonaAICoreEngine({
                   )}
                   <button
                     onClick={() => handleTrigger()}
-                    disabled={isGenerating || !hasValidKey}
-                    title={hasValidKey ? `Ask ${activePersona.name} (${targetDurationSec}s)` : "API Key entry and HTTP verification required to submit questions"}
+                    disabled={isGenerating || !hasValidKey || !customPrompt.trim()}
+                    title={
+                      !hasValidKey 
+                        ? "API Key entry and HTTP verification required to submit questions" 
+                        : !customPrompt.trim() 
+                          ? "Click 'Create Question' to populate the technical query before sending" 
+                          : `Respond as ${activePersona.name} (${targetDurationSec}s)`
+                    }
                     className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold transition-all shadow-lg ${
-                      hasValidKey 
+                      hasValidKey && customPrompt.trim()
                         ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30 cursor-pointer' 
                         : 'bg-zinc-900 border border-zinc-800 text-zinc-500 opacity-50 cursor-not-allowed'
                     }`}
@@ -1097,7 +1266,9 @@ export function MeetPersonaAICoreEngine({
                       ? `Synthesizing ${targetDurationSec}s Response...` 
                       : !hasValidKey 
                         ? 'Key Verification Required' 
-                        : `Ask ${activePersona.name} (${targetDurationSec}s)`}
+                        : !customPrompt.trim()
+                          ? `Respond as ${activePersona.name} (Awaiting Question)`
+                          : `Respond as ${activePersona.name}`}
                   </button>
                 </div>
               </div>
@@ -1395,11 +1566,86 @@ export function MeetPersonaAICoreEngine({
             <span className="text-xs text-zinc-500">Direct Device Mic Mode</span>
           </div>
 
+          {/* LLM Call Trace Cards — Clickable & Expandable */}
+          {lastLlmCalls.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 pb-1">
+                <FileCode className="w-3.5 h-3.5 text-purple-400" />
+                <span className="text-[11px] font-bold text-purple-300 uppercase tracking-wider">Live LLM Call Pipeline</span>
+                <span className="text-[10px] text-zinc-500 font-mono">({lastLlmCalls.length} calls captured)</span>
+              </div>
+              {lastLlmCalls.map((trace, idx) => {
+                const isExpanded = expandedTraceId === trace.traceId;
+                const isQuestion = trace.type === 'QUESTION_EXTRACTION';
+                const stageLabel = isQuestion ? `Stage 1: Question Extraction` : `Stage 2: Persona Response`;
+                const borderColor = isQuestion ? 'border-purple-500/50' : 'border-indigo-500/50';
+                const bgColor = isQuestion ? 'bg-purple-950/30' : 'bg-indigo-950/30';
+                const badgeColor = isQuestion ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30';
+                return (
+                  <div key={trace.traceId} className={`rounded-xl border ${borderColor} ${bgColor} overflow-hidden`}>
+                    {/* Card Header — always visible, clickable to expand */}
+                    <button
+                      onClick={() => setExpandedTraceId(isExpanded ? null : trace.traceId)}
+                      className="w-full p-3 flex items-center justify-between gap-3 text-left hover:bg-white/5 transition-colors"
+                    >
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${badgeColor}`}>
+                          {stageLabel}
+                        </span>
+                        <span className="text-[10px] font-mono text-zinc-400">Model: <span className="text-zinc-200">{trace.model}</span></span>
+                        <span className="text-[10px] font-mono text-amber-400">{trace.latencyMs}ms</span>
+                        <span className="text-[10px] font-mono text-zinc-500">{new Date(trace.timestamp).toLocaleTimeString()}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[10px] text-zinc-400">{isExpanded ? 'Collapse' : 'Click to view LLM call →'}</span>
+                        <span className={`text-[10px] font-bold transition-transform ${isExpanded ? 'rotate-180' : ''}`}>▾</span>
+                      </div>
+                    </button>
+
+                    {/* Expanded Plain-Text LLM Call View */}
+                    {isExpanded && (
+                      <div className="border-t border-zinc-700/50 space-y-3 p-3">
+                        {/* System Prompt */}
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">System Prompt (Plain Text):</span>
+                          </div>
+                          <pre className="text-[10px] text-zinc-200 font-mono bg-zinc-950/80 p-3 rounded-lg border border-zinc-800 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                            {trace.systemPrompt}
+                          </pre>
+                        </div>
+                        {/* User Message */}
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">User Message (Plain Text):</span>
+                          </div>
+                          <pre className="text-[10px] text-amber-100 font-mono bg-zinc-950/80 p-3 rounded-lg border border-amber-500/20 max-h-32 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                            {trace.userMessage}
+                          </pre>
+                        </div>
+                        {/* Raw Response Snippet */}
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">LLM Response:</span>
+                          </div>
+                          <pre className="text-[10px] text-emerald-200 font-mono bg-zinc-950/80 p-3 rounded-lg border border-emerald-500/20 max-h-24 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                            {trace.rawResponse.length > 500 ? trace.rawResponse.slice(0, 500) + '...' : trace.rawResponse}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {isTranscribing && interimText && (
             <div className="p-2.5 bg-emerald-950/30 border border-emerald-500/30 rounded-lg text-xs text-emerald-200 font-mono italic animate-pulse">
               Listening... "{interimText}"
             </div>
           )}
+
 
           {state.transcripts.length === 0 ? (
             <div className="p-8 text-center bg-zinc-950 rounded-xl border border-zinc-800/80 space-y-2">
