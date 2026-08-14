@@ -35,7 +35,7 @@ import {
 import type { EngineState, TranscriptEntry, LlmCallTrace } from "../types";
 import { useFeedbackCollector } from "../hooks/useFeedbackCollector";
 import { useLiveSpeechRecognition } from "../hooks/useLiveSpeechRecognition";
-import { StorageProxy, getUserApiKey, setUserApiKey, validateApiKey, isApiKeyVerifiedLocally, extractQuestionViaLLM, calculateTargetWords } from "../engine/storageProxy";
+import { StorageProxy, getUserApiKey, setUserApiKey, validateApiKey, isApiKeyVerifiedLocally, testModelAvailability, extractQuestionViaLLM, calculateTargetWords } from "../engine/storageProxy";
 import { parseQuestionFromTranscript } from "../utils/transcriptParser";
 import type { ApiModel } from "../engine/storageProxy";
 
@@ -147,6 +147,36 @@ export function MeetPersonaAICoreEngine({
   const [isValidatingKey, setIsValidatingKey] = useState(false);
   const [keyValidationStatus, setKeyValidationStatus] = useState<{ isValid: boolean; message: string } | null>(null);
   const keyInputRef = useRef<HTMLInputElement>(null);
+
+  // Live Instant Model Availability Test State
+  const [isTestingModel, setIsTestingModel] = useState(false);
+  const [modelTestStatus, setModelTestStatus] = useState<{ isAvailable: boolean; message: string } | null>(null);
+
+  const handleModelSelectionChange = async (newModel: string) => {
+    onSelectModel(newModel);
+    const key = getUserApiKey();
+    if (!key || !key.trim()) return;
+
+    setIsTestingModel(true);
+    setModelTestStatus(null);
+
+    const res = await testModelAvailability(newModel, key);
+    setIsTestingModel(false);
+
+    if (res.isAvailable) {
+      setModelTestStatus({
+        isAvailable: true,
+        message: `✓ Model "${newModel}" Verified & Active (${res.latencyMs}ms)`
+      });
+    } else {
+      const fallback = res.fallbackModelId || 'google/gemini-2.0-flash-lite-preview-02-05:free';
+      setModelTestStatus({
+        isAvailable: false,
+        message: `⚠️ ${res.errorNotice || 'Model unavailable'}. Switched to working model "${fallback}".`
+      });
+      onSelectModel(fallback);
+    }
+  };
 
   // STRICT validation: Mic & Debate are ONLY unlocked if HTTP ping returns isValid === true
   const hasValidKey = Boolean(
@@ -562,8 +592,9 @@ export function MeetPersonaAICoreEngine({
                 onChange={(e) => {
                   if (e.target.value === 'custom') {
                     onSelectModel('');
+                    setModelTestStatus(null);
                   } else {
-                    onSelectModel(e.target.value);
+                    handleModelSelectionChange(e.target.value);
                   }
                 }}
                 className="bg-transparent text-zinc-200 font-medium focus:outline-none cursor-pointer max-w-[220px]"
@@ -610,9 +641,31 @@ export function MeetPersonaAICoreEngine({
                 placeholder="e.g. qwen/qwen-2.5-72b-instruct"
                 value={selectedModel === 'custom' ? '' : selectedModel}
                 onChange={(e) => onSelectModel(e.target.value)}
+                onBlur={(e) => handleModelSelectionChange(e.target.value)}
                 className="bg-zinc-900 border border-indigo-500/40 rounded-lg px-3 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-indigo-400 placeholder-zinc-500"
               />
             )}
+
+            {/* Live Model Availability Status Badge */}
+            {isTestingModel ? (
+              <div className="flex items-center gap-1.5 text-[11px] text-indigo-400 font-mono animate-pulse">
+                <RefreshCw className="w-3 h-3 animate-spin shrink-0" />
+                <span>Testing model availability...</span>
+              </div>
+            ) : modelTestStatus ? (
+              <div className={`flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 rounded border transition-all ${
+                modelTestStatus.isAvailable 
+                  ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300' 
+                  : 'bg-amber-950/60 border-amber-500/40 text-amber-300'
+              }`}>
+                {modelTestStatus.isAvailable ? (
+                  <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
+                )}
+                <span className="truncate max-w-[260px]">{modelTestStatus.message}</span>
+              </div>
+            ) : null}
           </div>
 
           <button

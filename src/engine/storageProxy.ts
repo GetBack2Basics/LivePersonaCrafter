@@ -173,6 +173,87 @@ export async function validateApiKey(key: string, provider: 'openrouter' | 'gemi
   return { isValid: false, provider: 'Unknown', message: 'API key validation failed.' };
 }
 
+/**
+ * Live model availability test fired immediately when a model is selected.
+ */
+export async function testModelAvailability(
+  modelId: string, 
+  userApiKey: string
+): Promise<{ isAvailable: boolean; latencyMs: number; errorNotice?: string; fallbackModelId?: string }> {
+  if (!userApiKey || !userApiKey.trim()) {
+    return { isAvailable: false, latencyMs: 0, errorNotice: 'No API key provided' };
+  }
+
+  const startTime = Date.now();
+  const cleanKey = userApiKey.trim();
+  const isGeminiKey = cleanKey.startsWith('AIza');
+  const isOpenRouterKey = cleanKey.startsWith('sk-or-');
+  const selectedProvider = localStorage.getItem('LPC_API_PROVIDER') || (isGeminiKey ? 'gemini' : 'openrouter');
+  const isGeminiModel = modelId.startsWith('gemini-') || (isGeminiKey && !isOpenRouterKey && (selectedProvider === 'gemini' || !modelId.includes('/')));
+
+  if (isGeminiModel) {
+    let chosenModel = modelId.replace(/^(google\/|models\/)/i, '').trim();
+    if (!chosenModel || chosenModel.includes('/') || chosenModel.includes(':')) {
+      chosenModel = 'gemini-1.5-flash';
+    }
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${chosenModel}:generateContent?key=${cleanKey}`;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: 'ping' }] }],
+          generationConfig: { maxOutputTokens: 5 }
+        })
+      });
+      const latencyMs = Date.now() - startTime;
+      if (res.ok) {
+        return { isAvailable: true, latencyMs };
+      } else {
+        const errNotice = res.status === 429 ? 'Rate Limited (HTTP 429)' : res.status === 404 ? 'Model Not Found (HTTP 404)' : `HTTP ${res.status}`;
+        return { isAvailable: false, latencyMs, errorNotice: `Gemini API model "${chosenModel}" returned ${errNotice}.`, fallbackModelId: 'gemini-1.5-flash' };
+      }
+    } catch (e: any) {
+      return { isAvailable: false, latencyMs: Date.now() - startTime, errorNotice: `Network error: ${e?.message || 'Connection failed'}`, fallbackModelId: 'gemini-1.5-flash' };
+    }
+  } else {
+    const openRouterModelId = getOpenRouterModelId(modelId);
+    const url = 'https://openrouter.ai/api/v1/chat/completions';
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${cleanKey}`,
+          'HTTP-Referer': 'https://meetpersona.ai',
+          'X-Title': 'MeetPersona AI',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: openRouterModelId,
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 5
+        })
+      });
+      const latencyMs = Date.now() - startTime;
+      if (res.ok) {
+        return { isAvailable: true, latencyMs };
+      } else {
+        const errNotice = res.status === 429 ? 'Rate Limited (HTTP 429)' : res.status === 404 ? 'Model Not Found (HTTP 404)' : `HTTP ${res.status}`;
+        const fallbackModelId = isGeminiKey ? 'gemini-1.5-flash' : 'google/gemini-2.0-flash-lite-preview-02-05:free';
+        return { 
+          isAvailable: false, 
+          latencyMs, 
+          errorNotice: `OpenRouter model "${openRouterModelId}" returned ${errNotice}.`,
+          fallbackModelId 
+        };
+      }
+    } catch (e: any) {
+      const fallbackModelId = isGeminiKey ? 'gemini-1.5-flash' : 'google/gemini-2.0-flash-lite-preview-02-05:free';
+      return { isAvailable: false, latencyMs: Date.now() - startTime, errorNotice: `Network error: ${e?.message || 'Connection failed'}`, fallbackModelId };
+    }
+  }
+}
+
 export function buildCombinedTranscriptContext(prompt: string, recentTranscripts: TranscriptEntry[]): string {
   const humanEntries = (recentTranscripts || [])
     .filter(t => t.speakerRole === 'human' && t.text && t.text.trim())
