@@ -612,8 +612,7 @@ export function MeetPersonaAICoreEngine({
                   <option value="gemini-1.5-pro" className="bg-zinc-900 text-zinc-100">Gemini 1.5 Pro [$1.25/1M]</option>
                 </optgroup>
                 <optgroup label="Free Tier Models (OpenRouter Key)" className="bg-zinc-900 text-emerald-400 font-bold">
-                  <option value="google/gemini-2.0-flash-lite-preview-02-05:free" className="bg-zinc-900 text-zinc-100">Google Gemini 2.0 Flash Lite [Free - Default]</option>
-                  <option value="google/gemma-2-9b-it:free" className="bg-zinc-900 text-zinc-100">Google Gemma 2 9B [Free]</option>
+                  <option value="google/gemma-2-9b-it:free" className="bg-zinc-900 text-zinc-100">Google Gemma 2 9B [Free - Default]</option>
                   <option value="meta-llama/llama-3.3-70b-instruct:free" className="bg-zinc-900 text-zinc-100">Meta Llama 3.3 70B [Free]</option>
                   <option value="meta-llama/llama-3.1-8b-instruct:free" className="bg-zinc-900 text-zinc-100">Meta Llama 3.1 8B [Free]</option>
                   <option value="qwen/qwen-2.5-72b-instruct:free" className="bg-zinc-900 text-zinc-100">Qwen 2.5 72B [Free]</option>

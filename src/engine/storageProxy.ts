@@ -258,8 +258,28 @@ export async function testModelAvailability(
       if (res.ok) {
         return { isAvailable: true, latencyMs };
       } else {
+        // If initial model failed (HTTP 400/404/429), test fallback model google/gemma-2-9b-it:free
+        if (openRouterModelId !== 'google/gemma-2-9b-it:free') {
+          const fallRes = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${cleanKey}`,
+              'HTTP-Referer': 'https://meetpersona.ai',
+              'X-Title': 'MeetPersona AI',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: 'google/gemma-2-9b-it:free',
+              messages: [{ role: 'user', content: 'Hello' }],
+              max_tokens: 15
+            })
+          });
+          if (fallRes.ok) {
+            return { isAvailable: true, latencyMs: Date.now() - startTime, fallbackModelId: 'google/gemma-2-9b-it:free' };
+          }
+        }
         const errNotice = res.status === 429 ? 'Rate Limited (HTTP 429)' : res.status === 404 ? 'Model Not Found (HTTP 404)' : `HTTP ${res.status}`;
-        const fallbackModelId = isGeminiKey ? 'gemini-1.5-flash' : 'google/gemini-2.0-flash-lite-preview-02-05:free';
+        const fallbackModelId = isGeminiKey ? 'gemini-1.5-flash' : 'google/gemma-2-9b-it:free';
         return { 
           isAvailable: false, 
           latencyMs, 
@@ -268,7 +288,7 @@ export async function testModelAvailability(
         };
       }
     } catch (e: any) {
-      const fallbackModelId = isGeminiKey ? 'gemini-1.5-flash' : 'google/gemini-2.0-flash-lite-preview-02-05:free';
+      const fallbackModelId = isGeminiKey ? 'gemini-1.5-flash' : 'google/gemma-2-9b-it:free';
       return { isAvailable: false, latencyMs: Date.now() - startTime, errorNotice: `Network error: ${e?.message || 'Connection failed'}`, fallbackModelId };
     }
   }
@@ -558,7 +578,7 @@ ${fullCombinedContext || dialogueHistory}
 }
 
 export function getOpenRouterModelId(selectedModel: string): string {
-  if (!selectedModel) return 'google/gemini-2.0-flash-lite-preview-02-05:free';
+  if (!selectedModel || selectedModel === 'google/gemini-2.0-flash-lite-preview-02-05:free') return 'google/gemma-2-9b-it:free';
   if (selectedModel.includes('/')) return selectedModel;
   
   // Legacy fallbacks and model mappings

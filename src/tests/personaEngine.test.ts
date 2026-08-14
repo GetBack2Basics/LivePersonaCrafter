@@ -37,7 +37,7 @@ async function runTests() {
 
   // Test 2: OpenRouter & Gemini Model ID Mapping
   console.log('\n[Test Group 2: Model Mapping & Catalog]');
-  assert(getOpenRouterModelId('') === 'google/gemini-2.0-flash-lite-preview-02-05:free', 'Default model ID fallback to Gemini 2.0 Flash Lite Free');
+  assert(getOpenRouterModelId('') === 'google/gemma-2-9b-it:free', 'Default model ID fallback to Gemma 2 9B Free');
   assert(getOpenRouterModelId('deepseek-r1-free') === 'deepseek/deepseek-r1:free', 'Model ID mapping for DeepSeek R1');
   assert(getOpenRouterModelId('gemini-2.5-flash') === 'google/gemini-2.5-flash', 'Model ID mapping for Gemini 2.5 Flash');
   assert(getOpenRouterModelId('gemini-2.0-flash') === 'google/gemini-2.0-flash-lite-preview-02-05:free', 'Model ID mapping for Gemini 2.0 Flash');
