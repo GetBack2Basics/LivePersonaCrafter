@@ -196,12 +196,13 @@ export function extractTopicFromPrompt(fullContextText: string): string {
   return clean.length > 70 ? clean.slice(0, 67) + '...' : clean.charAt(0).toUpperCase() + clean.slice(1);
 }
 
-export function calculateTargetWords(durationSec: number): { targetWordCount: number; maxTokens: number } {
-  if (durationSec <= 30) return { targetWordCount: 85, maxTokens: 400 };
-  if (durationSec <= 45) return { targetWordCount: 140, maxTokens: 650 };
-  if (durationSec <= 60) return { targetWordCount: 200, maxTokens: 850 };
-  if (durationSec <= 90) return { targetWordCount: 300, maxTokens: 1200 };
-  return { targetWordCount: 420, maxTokens: 1700 };
+export function calculateTargetWords(durationSec: number): { targetWordCount: number; minWords: number; maxWords: number; maxTokens: number } {
+  if (durationSec <= 20) return { targetWordCount: 40, minWords: 30, maxWords: 55, maxTokens: 130 };
+  if (durationSec <= 35) return { targetWordCount: 80, minWords: 65, maxWords: 95, maxTokens: 220 };
+  if (durationSec <= 50) return { targetWordCount: 125, minWords: 100, maxWords: 145, maxTokens: 320 };
+  if (durationSec <= 75) return { targetWordCount: 165, minWords: 140, maxWords: 190, maxTokens: 420 };
+  if (durationSec <= 105) return { targetWordCount: 245, minWords: 210, maxWords: 280, maxTokens: 620 };
+  return { targetWordCount: 330, minWords: 280, maxWords: 370, maxTokens: 820 };
 }
 
 export function calculateClientAlignmentScore(responseText: string, persona: PersonaProfile, targetDurationSec: number = 45): number {
@@ -216,8 +217,8 @@ export function calculateClientAlignmentScore(responseText: string, persona: Per
   }
   const { targetWordCount } = calculateTargetWords(targetDurationSec);
   const actualWords = responseText.split(/\s+/).filter(Boolean).length;
-  const lengthRatio = Math.min(actualWords / Math.max(targetWordCount, 1), 1.2);
-  const lengthScore = Math.min(Math.max(lengthRatio * 40, 10), 40);
+  const diffRatio = Math.abs(actualWords - targetWordCount) / Math.max(targetWordCount, 1);
+  const lengthScore = Math.max(40 - Math.round(diffRatio * 40), 10);
   const totalTraits = persona.keyTraits?.length || 1;
   const traitScore = Math.min((matchedCount / totalTraits) * 40, 40);
   const relevanceScore = textLower.length > 50 ? 20 : 10;
@@ -256,8 +257,8 @@ export function parseCoreQuestionFromJsonResponse(rawJsonText: string): string |
  */
 export async function extractQuestionViaLLM(
   rawTranscript: string,
-  personaName: string,
-  personaRole: string,
+  _personaName: string,
+  _personaRole: string,
   selectedModel: string = 'google/gemini-2.0-flash-lite-preview-02-05:free'
 ): Promise<{ extractedQuestion: string; llmCallTrace: LlmCallTrace }> {
   const startTime = Date.now();
@@ -388,7 +389,7 @@ export function buildSystemPrompt(
 ): string {
   const quotesStr = persona.sampleQuotes ? persona.sampleQuotes.map(q => `"${q}"`).join('\n- ') : '';
   const traitsStr = persona.keyTraits ? persona.keyTraits.join(', ') : '';
-  const { targetWordCount } = calculateTargetWords(targetDurationSec);
+  const { targetWordCount, minWords, maxWords } = calculateTargetWords(targetDurationSec);
 
   const dialogueHistory = recentTranscripts && recentTranscripts.length > 0
     ? recentTranscripts.map(t => `[${t.speakerRole.toUpperCase()}] ${t.speaker}: ${t.text}`).join('\n')
@@ -424,7 +425,7 @@ ${fullCombinedContext || dialogueHistory}
 3. DO NOT repeat or echo the user's question or prompt as filler text. Start directly with your technical position.
 4. DO NOT use rigid headers, section labels, or template tags. Speak naturally in authentic first person.
 5. DO NOT output specific project repository names UNLESS the user explicitly asks about those projects by name in their prompt.
-6. TARGET LENGTH LIMIT: Provide a response strictly limited to match the set target duration of exactly ${targetDurationSec} seconds of spoken vocal delivery (~${targetWordCount} words).`;
+6. CRITICAL LENGTH RULE: Provide a response strictly between ${minWords} and ${maxWords} words (~${targetDurationSec} seconds of spoken vocal delivery). Do NOT exceed ${maxWords} words under any circumstances. Stop as soon as you complete ~${targetWordCount} words.`;
 }
 
 export function getOpenRouterModelId(selectedModel: string): string {
@@ -573,14 +574,14 @@ export class StorageProxy {
     const combinedContextText = buildCombinedTranscriptContext(contextPrompt, recentTranscripts);
     const topicAddressed = extractTopicFromPrompt(combinedContextText);
     const systemPrompt = buildSystemPrompt(persona, recentTranscripts, targetDurationSec, combinedContextText);
-    const { targetWordCount, maxTokens } = calculateTargetWords(targetDurationSec);
+    const { targetWordCount, minWords, maxWords, maxTokens } = calculateTargetWords(targetDurationSec);
 
     const selectedProvider = localStorage.getItem('LPC_API_PROVIDER') || (userApiKey.startsWith('AIza') ? 'gemini' : 'openrouter');
     const isOpenRouterKey = userApiKey.startsWith('sk-or-');
     const isGeminiKey = userApiKey.startsWith('AIza');
     const isGeminiProvider = isGeminiKey || (selectedProvider === 'gemini' && !isOpenRouterKey);
 
-    const promptText = `=== CORE QUESTION TO ANSWER & DEBATE ===\n<user_input>\n${contextPrompt}\n</user_input>\n\n=== SPOKEN AUDIO TRANSCRIPT HISTORY ===\n${combinedContextText}\n\n=== PERSONA RESPONSE DIRECTIVE ===\nAs ${persona.name} (${persona.role}), provide a direct ${targetDurationSec} second (${targetWordCount}+ word) technical response answering the question above in your authentic persona voice. Start directly with your position without repeating the question.`;
+    const promptText = `=== CORE QUESTION TO ANSWER & DEBATE ===\n<user_input>\n${contextPrompt}\n</user_input>\n\n=== SPOKEN AUDIO TRANSCRIPT HISTORY ===\n${combinedContextText}\n\n=== PERSONA RESPONSE DIRECTIVE ===\nAs ${persona.name} (${persona.role}), provide a direct ${targetDurationSec} second (${minWords}–${maxWords} words, target: ~${targetWordCount} words) technical response answering the question above in your authentic persona voice. Do NOT exceed ${maxWords} words. Start directly with your position without repeating the question.`;
 
     let responseText = '';
     let modelUsed = selectedModel;

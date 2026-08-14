@@ -18,7 +18,6 @@ import {
   Download,
   RefreshCw,
   HardDrive,
-  Zap,
   Info,
   FileCode,
   Cpu,

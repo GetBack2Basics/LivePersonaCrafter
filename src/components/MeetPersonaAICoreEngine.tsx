@@ -9,11 +9,8 @@ import {
   Share2, 
   CheckCircle2, 
   Sliders, 
-  Radio, 
   Database,
   Download,
-  CloudCheck,
-  HardDrive,
   Cpu,
   Mic,
   MicOff,
@@ -24,7 +21,6 @@ import {
   FileCode,
   Clock,
   Gauge,
-  HelpCircle,
   Key,
   AlertTriangle,
   Globe,
@@ -39,7 +35,7 @@ import {
 import type { EngineState, TranscriptEntry, LlmCallTrace } from "../types";
 import { useFeedbackCollector } from "../hooks/useFeedbackCollector";
 import { useLiveSpeechRecognition } from "../hooks/useLiveSpeechRecognition";
-import { StorageProxy, getUserApiKey, setUserApiKey, validateApiKey, isApiKeyVerifiedLocally, extractQuestionViaLLM } from "../engine/storageProxy";
+import { StorageProxy, getUserApiKey, setUserApiKey, validateApiKey, isApiKeyVerifiedLocally, extractQuestionViaLLM, calculateTargetWords } from "../engine/storageProxy";
 import { parseQuestionFromTranscript } from "../utils/transcriptParser";
 import type { ApiModel } from "../engine/storageProxy";
 
@@ -90,13 +86,13 @@ export function MeetPersonaAICoreEngine({
   onSwitchPersona,
   onTriggerResponse,
   onSubmitFeedback,
-  onToggleListening,
+  onToggleListening: _onToggleListening,
   onAddTranscript,
   onUpdateTranscript,
   selectedModel,
   onSelectModel,
-  syncStatus = 'INDEXEDDB',
-  isSyncing = false,
+  syncStatus: _syncStatus = 'INDEXEDDB',
+  isSyncing: _isSyncing = false,
   onAddPersona,
   onUpdatePersona,
   lastLlmCalls = [],
@@ -1132,6 +1128,43 @@ export function MeetPersonaAICoreEngine({
                   return null;
                 })()}
 
+                {/* Target Speech Duration & Estimated Word Count Selector */}
+                <div className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <Timer className="w-4 h-4 text-indigo-400" />
+                      <span className="text-xs font-bold text-zinc-200">Target Speech Duration & Word Count:</span>
+                      <span className="text-xs font-mono font-bold text-indigo-300 bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-500/30">
+                        {targetDurationSec}s (~{calculateTargetWords(targetDurationSec).targetWordCount} words)
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-zinc-400 font-mono">
+                      Target: {calculateTargetWords(targetDurationSec).minWords}–{calculateTargetWords(targetDurationSec).maxWords} words
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {[15, 30, 45, 60, 90, 120].map((dur) => {
+                      const isSelected = targetDurationSec === dur;
+                      const { targetWordCount: wc } = calculateTargetWords(dur);
+                      return (
+                        <button
+                          key={dur}
+                          type="button"
+                          onClick={() => setTargetDurationSec(dur)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-mono font-semibold transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-indigo-600 text-white border border-indigo-400 shadow-md shadow-indigo-600/30'
+                              : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:bg-zinc-800 hover:text-zinc-200'
+                          }`}
+                        >
+                          {dur}s <span className="text-[10px] opacity-75">(~{wc}w)</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <textarea
                   value={customPrompt}
                   onChange={(e) => {
@@ -1567,7 +1600,7 @@ export function MeetPersonaAICoreEngine({
                 <span className="text-[11px] font-bold text-purple-300 uppercase tracking-wider">Live LLM Call Pipeline</span>
                 <span className="text-[10px] text-zinc-500 font-mono">({lastLlmCalls.length} calls captured)</span>
               </div>
-              {lastLlmCalls.map((trace, idx) => {
+              {lastLlmCalls.map((trace) => {
                 const isExpanded = expandedTraceId === trace.traceId;
                 const isQuestion = trace.type === 'QUESTION_EXTRACTION';
                 const stageLabel = isQuestion ? `Stage 1: Question Extraction` : `Stage 2: Persona Response`;

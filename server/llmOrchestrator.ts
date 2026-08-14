@@ -130,12 +130,13 @@ export class LLMOrchestrator {
     ];
   }
 
-  public static calculateTargetWords(durationSec: number): { targetWordCount: number; maxTokens: number } {
-    if (durationSec <= 30) return { targetWordCount: 85, maxTokens: 400 };
-    if (durationSec <= 45) return { targetWordCount: 140, maxTokens: 650 };
-    if (durationSec <= 60) return { targetWordCount: 200, maxTokens: 850 };
-    if (durationSec <= 90) return { targetWordCount: 300, maxTokens: 1200 };
-    return { targetWordCount: 420, maxTokens: 1700 };
+  public static calculateTargetWords(durationSec: number): { targetWordCount: number; minWords: number; maxWords: number; maxTokens: number } {
+    if (durationSec <= 20) return { targetWordCount: 40, minWords: 30, maxWords: 55, maxTokens: 130 };
+    if (durationSec <= 35) return { targetWordCount: 80, minWords: 65, maxWords: 95, maxTokens: 220 };
+    if (durationSec <= 50) return { targetWordCount: 125, minWords: 100, maxWords: 145, maxTokens: 320 };
+    if (durationSec <= 75) return { targetWordCount: 165, minWords: 140, maxWords: 190, maxTokens: 420 };
+    if (durationSec <= 105) return { targetWordCount: 245, minWords: 210, maxWords: 280, maxTokens: 620 };
+    return { targetWordCount: 330, minWords: 280, maxWords: 370, maxTokens: 820 };
   }
 
   public static extractTopic(prompt: string): string {

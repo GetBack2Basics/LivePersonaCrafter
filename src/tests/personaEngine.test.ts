@@ -68,9 +68,9 @@ async function runTests() {
   // Test 3: Target Word & Token Calculation
   console.log('\n[Test Group 3: Duration & Token Budget Math]');
   const calc30 = calculateTargetWords(30);
-  assert(calc30.targetWordCount === 85 && calc30.maxTokens === 400, '30s duration budget calculation');
+  assert(calc30.targetWordCount === 80 && calc30.maxTokens === 220, '30s duration budget calculation');
   const calc60 = calculateTargetWords(60);
-  assert(calc60.targetWordCount === 200 && calc60.maxTokens === 850, '60s duration budget calculation');
+  assert(calc60.targetWordCount === 165 && calc60.maxTokens === 420, '60s duration budget calculation');
 
   // Test 4: Topic Extraction Logic
   console.log('\n[Test Group 4: Topic Extraction]');
@@ -102,7 +102,7 @@ async function runTests() {
   console.log('\n[Test Group 6: System Prompt Engineering]');
   const prompt = buildSystemPrompt(samplePersona, [], 45, 'Sample prompt');
   assert(prompt.includes('GetBack2Basics'), 'System prompt includes persona name');
-  assert(prompt.includes('TARGET LENGTH'), 'System prompt includes duration target directive');
+  assert(prompt.includes('CRITICAL LENGTH RULE') || prompt.includes('TARGET LENGTH'), 'System prompt includes duration target directive');
 
   // Test 7: Persona Profile & Key Validation Security Rejection
   console.log('\n[Test Group 7: Persona Generation Security & Key Rejection]');
