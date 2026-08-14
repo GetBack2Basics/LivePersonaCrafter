@@ -133,12 +133,12 @@ function GettingStartedTab() {
         </StepCard>
 
         <StepCard number={3} title="Select Your Model">
-          <p>Use the model dropdown next to the provider. When your key is verified, it will auto-populate with available models grouped by tier:</p>
+          <p>Use the model dropdown next to the provider. When your key is verified, it automatically selects the top free-tier model:</p>
           <ul className="mt-1 space-y-0.5 ml-2">
-            <li>• <span className="text-emerald-400 font-semibold">Free</span> — no-cost models (Llama, Gemma, Qwen)</li>
-            <li>• <span className="text-amber-400 font-semibold">Cheap / Medium</span> — cost-effective paid models</li>
-            <li>• <span className="text-rose-400 font-semibold">Top</span> — Claude, GPT-4o, Gemini Pro</li>
+            <li>• <span className="text-emerald-400 font-semibold">OpenRouter Key:</span> Auto-selects <code className="text-xs bg-zinc-800 px-1 py-0.5 rounded text-emerald-300">google/gemini-2.0-flash-lite-preview-02-05:free [Free]</code></li>
+            <li>• <span className="text-emerald-400 font-semibold">Gemini API Key:</span> Auto-selects <code className="text-xs bg-zinc-800 px-1 py-0.5 rounded text-emerald-300">gemini-1.5-flash [Free]</code></li>
           </ul>
+          <p className="mt-1">All models display transparent pricing in brackets <code className="text-xs bg-zinc-800 px-1 py-0.5 rounded text-zinc-300">[Free]</code>, <code className="text-xs bg-zinc-800 px-1 py-0.5 rounded text-zinc-300">[$0.07/M]</code>, <code className="text-xs bg-zinc-800 px-1 py-0.5 rounded text-zinc-300">[$0.15/M]</code>.</p>
         </StepCard>
       </div>
 
@@ -208,13 +208,12 @@ function MicDebateTab() {
         </div>
         <div>
           <h3 className="font-extrabold text-base text-zinc-100">Mic & Debate Engine</h3>
-          <p className="text-xs text-zinc-400">Live speech recognition and AI persona response generation</p>
+          <p className="text-xs text-zinc-400">Live speech recognition, JSON core question synthesis, and persona response generation</p>
         </div>
       </div>
 
       <p className="text-sm text-zinc-300 leading-relaxed">
-        The debate engine captures your speech via your device microphone, converts it to text, and then
-        generates an in-character AI response from the active persona — optionally spoken aloud via text-to-speech.
+        The debate engine captures your speech via your device microphone, synthesizes the core question using an LLM JSON schema, and generates in-character persona responses.
       </p>
 
       <div className="space-y-3">
@@ -222,46 +221,37 @@ function MicDebateTab() {
           <Mic className="w-3.5 h-3.5" /> Running a Debate Session
         </h4>
 
-        <StepCard number={1} title="Start Microphone & Real-Time Noise Graph">
-          <p>Click the <InlineBadge color="amber"><Mic className="w-3 h-3" /> Start Device Mic</InlineBadge> button in the Debate Control panel.</p>
+        <StepCard number={1} title="Start Microphone & 3000ms Silence Latency">
+          <p>Click <InlineBadge color="amber"><Mic className="w-3 h-3" /> Start Device Mic</InlineBadge> in the Debate Control panel.</p>
           <p className="mt-1">Your browser will request microphone permission — click Allow.</p>
           <p className="mt-1">
-            <strong>Live Audio Noise Graph:</strong> While recording, a real-time 16-band Web Audio API frequency noise graph visualizes audio volume and input noise picked up by your mic.
+            <strong>Silence Latency (Default 3000ms):</strong> Speech recognition uses a 3000 ms silence latency by default (customizable in UI) before finalizing spoken transcript entries.
           </p>
-          <p className="mt-1">Speak clearly. Live interim text appears as you talk. Final segments are saved as transcript entries.</p>
+          <p className="mt-1">A real-time 16-band noise frequency graph visualizes your microphone audio levels.</p>
         </StepCard>
 
-        <StepCard number={2} title="Spoken Audio Question Parser & Prompt Retention">
-          <p>Spoken transcripts automatically filter out voice filler ("um", "ah") and greetings ("hey persona") to isolate core questions.</p>
+        <StepCard number={2} title="Synthesize Core Question (Create Question)">
+          <p>Speak your prompt or discussion topic into the microphone.</p>
           <p className="mt-1">
-            A <InlineBadge color="indigo">Use Parsed Question</InlineBadge> button lets you load the cleaned question straight into the prompt box.
-          </p>
-          <p className="mt-1">
-            <strong>Prompt Retention:</strong> Prompts remain in the question box after triggering responses so you can edit, refine, or re-run queries without re-typing.
+            Click <InlineBadge color="indigo">Create Question</InlineBadge>. The LLM receives the spoken audio transcript and extracts the core question strictly using JSON schema:
+            <code className="block text-[11px] bg-zinc-950 p-2 rounded mt-1 font-mono text-indigo-300">{`{\n  "core_question": "string"\n}`}</code>
           </p>
         </StepCard>
 
-        <StepCard number={3} title="Set Debate Parameters">
-          <ul className="space-y-1">
-            <li>• <strong className="text-zinc-200">Target Duration:</strong> Use the slider to set desired response length (15–120 seconds). The AI calibrates word count accordingly.</li>
-            <li>• <strong className="text-zinc-200">Latency Leeway:</strong> Choose Low / Medium / High to balance speed vs. quality.</li>
-            <li>• <strong className="text-zinc-200">Custom Prompt:</strong> Type or paste a debate topic/question directly into the prompt field.</li>
-          </ul>
+        <StepCard number={3} title="Generate Persona Response (Respond as Persona)">
+          <p>Once the core question is synthesized, the <InlineBadge color="emerald">Respond as Persona</InlineBadge> button activates.</p>
+          <p className="mt-1">Click <InlineBadge color="emerald">Respond as Persona</InlineBadge> to generate a direct 45-second (~75+ word) technical response in the active persona's voice without repeating the question.</p>
+          <p className="mt-1">If the selected model encounters upstream rate limits, the system automatically retries with Gemini 2.0 Flash Lite Free.</p>
         </StepCard>
 
-        <StepCard number={4} title="Trigger a Persona Response">
-          <p>Click <InlineBadge color="indigo"><Zap className="w-3 h-3" /> Ask Persona</InlineBadge>.</p>
-          <p className="mt-1">The AI generates a response in the active persona's voice with real latency, word count, and model metadata.</p>
-        </StepCard>
-
-        <StepCard number={5} title="Text-to-Speech Playback & Mic Stop">
-          <p>On any generated response, click <InlineBadge color="cyan"><Volume2 className="w-3 h-3" /> Speak</InlineBadge> to hear it read aloud via browser synthesis.</p>
-          <p className="mt-1">Click <InlineBadge color="rose">Stop Device Mic</InlineBadge> when finished recording.</p>
+        <StepCard number={4} title="Text-to-Speech Playback & Controls">
+          <p>On any generated response card, click <InlineBadge color="cyan"><Volume2 className="w-3 h-3" /> Speak</InlineBadge> to hear it read aloud using browser synthesis (supports rate and pitch controls).</p>
+          <p className="mt-1">Click <InlineBadge color="rose">Stop Device Mic</InlineBadge> when done recording.</p>
         </StepCard>
       </div>
 
       <TipBox>
-        <strong>Prerequisite & Discreet Lock:</strong> A verified API key is required before starting the mic or asking questions. Inactive controls are discreetly greyed out — hover over any disabled button to view the verification tooltip.
+        <strong>Prerequisite & Verification:</strong> A verified API key is required before asking questions. Verified keys automatically select the top free-tier model for your chosen provider.
       </TipBox>
     </div>
   );
