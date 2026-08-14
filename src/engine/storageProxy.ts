@@ -701,12 +701,36 @@ export class StorageProxy {
           }
         }
 
+        if (!callResult && userApiKey.startsWith('AIza')) {
+          console.info('[MeetPersona AI] OpenRouter fallbacks exhausted. Retrying via direct Gemini API (gemini-1.5-flash)...');
+          try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${userApiKey}`;
+            const gemRes = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: `${systemPrompt}\n\n${promptText}` }] }],
+                generationConfig: { temperature: 0.7, maxOutputTokens: maxTokens }
+              })
+            });
+            if (gemRes.ok) {
+              const gemData = await gemRes.json();
+              const gemText = gemData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+              if (gemText) {
+                callResult = { text: gemText, modelId: 'Gemini (gemini-1.5-flash)' };
+              }
+            }
+          } catch (gemErr) {
+            console.warn('[MeetPersona AI] Gemini API fallback notice:', gemErr);
+          }
+        }
+
         if (callResult) {
           responseText = callResult.text;
-          modelUsed = `OpenRouter (${callResult.modelId})`;
-          console.info(`[MeetPersona AI] OpenRouter response generation succeeded (${callResult.text.split(/\s+/).length} words).`);
+          modelUsed = callResult.modelId.startsWith('Gemini') ? callResult.modelId : `OpenRouter (${callResult.modelId})`;
+          console.info(`[MeetPersona AI] Response generation succeeded via ${modelUsed} (${callResult.text.split(/\s+/).length} words).`);
         } else {
-          responseText = `[API ERROR] The selected model "${selectedModel}" returned an error from OpenRouter. Please select "Google Gemini 2.0 Flash Lite [Free]" from the model dropdown and verify your API key is active.`;
+          responseText = `[API ERROR] The selected model "${selectedModel}" returned an error from OpenRouter. Please select "Google Gemini 2.0 Flash Lite [Free]" or "Gemini 1.5 Flash" from the model dropdown and verify your API key is active.`;
         }
       }
 

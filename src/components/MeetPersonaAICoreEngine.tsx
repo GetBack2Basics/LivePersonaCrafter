@@ -550,14 +550,14 @@ export function MeetPersonaAICoreEngine({
               <Globe className="w-3.5 h-3.5 text-indigo-400" />
               <select
                 value={
-                  availableModels.length > 0 
-                    ? (availableModels.find(m => m.id === selectedModel) ? selectedModel : 'custom')
-                    : ([
-                        'gemini-1.5-flash', 'gemini-1.5-pro', 
-                        'google/gemini-2.0-flash-lite-preview-02-05:free', 'meta-llama/llama-3.1-8b-instruct:free', 'qwen/qwen-2.5-7b-instruct:free', 'google/gemma-2-9b-it:free',
-                        'deepseek/deepseek-chat', 'qwen/qwen-2.5-72b-instruct', 
-                        'anthropic/claude-3.5-sonnet', 'openai/gpt-4o'
-                      ].includes(selectedModel) ? selectedModel : 'custom')
+                  [
+                    'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 
+                    'google/gemini-2.0-flash-lite-preview-02-05:free', 'google/gemma-2-9b-it:free', 
+                    'meta-llama/llama-3.3-70b-instruct:free', 'meta-llama/llama-3.1-8b-instruct:free', 
+                    'qwen/qwen-2.5-72b-instruct:free', 'deepseek/deepseek-r1:free',
+                    'deepseek/deepseek-chat', 'meta-llama/llama-3.3-70b-instruct', 'qwen/qwen-2.5-72b-instruct', 
+                    'anthropic/claude-3.5-sonnet', 'openai/gpt-4o'
+                  ].includes(selectedModel) ? selectedModel : 'custom'
                 }
                 onChange={(e) => {
                   if (e.target.value === 'custom') {
@@ -568,43 +568,29 @@ export function MeetPersonaAICoreEngine({
                 }}
                 className="bg-transparent text-zinc-200 font-medium focus:outline-none cursor-pointer max-w-[220px]"
               >
-                {availableModels.length > 0 ? (
-                  <>
-                    {['Free', 'Cheap', 'Medium', 'Top', 'Gemini'].map(group => {
-                      const groupModels = availableModels.filter(m => m.group === group);
-                      if (groupModels.length === 0) return null;
-                      return (
-                        <optgroup key={group} label={`${group} Models`} className="bg-zinc-900 text-emerald-400 font-bold">
-                          {groupModels.map(m => (
-                            <option key={m.id} value={m.id} className="bg-zinc-900 text-zinc-100">{m.name}</option>
-                          ))}
-                        </optgroup>
-                      );
-                    })}
-                  </>
-                ) : (
-                  <>
-                    <optgroup label="Direct Gemini API Tiers (Gemini Key)" className="bg-zinc-900 text-cyan-400 font-bold">
-                      <option value="gemini-1.5-flash" className="bg-zinc-900 text-zinc-100">Gemini 1.5 Flash [Free Tier / $0.075/1M]</option>
-                      <option value="gemini-1.5-pro" className="bg-zinc-900 text-zinc-100">Gemini 1.5 Pro [$1.25/1M]</option>
-                    </optgroup>
-                    <optgroup label="Free Tier Models (OpenRouter Key)" className="bg-zinc-900 text-emerald-400 font-bold">
-                      <option value="google/gemini-2.0-flash-lite-preview-02-05:free" className="bg-zinc-900 text-zinc-100">Google Gemini 2.0 Flash Lite [Free - Default]</option>
-                      <option value="google/gemma-2-9b-it:free" className="bg-zinc-900 text-zinc-100">Google Gemma 2 9B [Free]</option>
-                      <option value="meta-llama/llama-3.1-8b-instruct:free" className="bg-zinc-900 text-zinc-100">Meta Llama 3.1 8B [Free]</option>
-                      <option value="qwen/qwen-2.5-7b-instruct:free" className="bg-zinc-900 text-zinc-100">Qwen 2.5 7B [Free]</option>
-                    </optgroup>
-                    <optgroup label="Chinese / Asian Models (OpenRouter Key)" className="bg-zinc-900 text-indigo-400 font-bold">
-                      <option value="deepseek/deepseek-chat" className="bg-zinc-900 text-zinc-100">DeepSeek V3 / R1 [$0.14/1M]</option>
-                      <option value="qwen/qwen-2.5-72b-instruct" className="bg-zinc-900 text-zinc-100">Alibaba Qwen 2.5 72B [$0.35/1M]</option>
-                    </optgroup>
-                    <optgroup label="High Performance Models (OpenRouter Key)" className="bg-zinc-900 text-amber-400 font-bold">
-                      <option value="anthropic/claude-3.5-sonnet" className="bg-zinc-900 text-zinc-100">Anthropic Claude 3.5 Sonnet [$3.00/1M]</option>
-                      <option value="openai/gpt-4o" className="bg-zinc-900 text-zinc-100">OpenAI GPT-4o [$2.50/1M]</option>
-                    </optgroup>
-                  </>
-                )}
-                <optgroup label="Custom Models" className="bg-zinc-900 text-purple-400 font-bold">
+                <optgroup label="Direct Google Gemini API (Gemini Key)" className="bg-zinc-900 text-cyan-400 font-bold">
+                  <option value="gemini-1.5-flash" className="bg-zinc-900 text-zinc-100">Gemini 1.5 Flash [Free Tier / $0.075/1M]</option>
+                  <option value="gemini-2.0-flash" className="bg-zinc-900 text-zinc-100">Gemini 2.0 Flash [$0.10/1M]</option>
+                  <option value="gemini-1.5-pro" className="bg-zinc-900 text-zinc-100">Gemini 1.5 Pro [$1.25/1M]</option>
+                </optgroup>
+                <optgroup label="Free Tier Models (OpenRouter Key)" className="bg-zinc-900 text-emerald-400 font-bold">
+                  <option value="google/gemini-2.0-flash-lite-preview-02-05:free" className="bg-zinc-900 text-zinc-100">Google Gemini 2.0 Flash Lite [Free - Default]</option>
+                  <option value="google/gemma-2-9b-it:free" className="bg-zinc-900 text-zinc-100">Google Gemma 2 9B [Free]</option>
+                  <option value="meta-llama/llama-3.3-70b-instruct:free" className="bg-zinc-900 text-zinc-100">Meta Llama 3.3 70B [Free]</option>
+                  <option value="meta-llama/llama-3.1-8b-instruct:free" className="bg-zinc-900 text-zinc-100">Meta Llama 3.1 8B [Free]</option>
+                  <option value="qwen/qwen-2.5-72b-instruct:free" className="bg-zinc-900 text-zinc-100">Qwen 2.5 72B [Free]</option>
+                  <option value="deepseek/deepseek-r1:free" className="bg-zinc-900 text-zinc-100">DeepSeek R1 [Free]</option>
+                </optgroup>
+                <optgroup label="Popular Paid Tiers (OpenRouter Key)" className="bg-zinc-900 text-indigo-400 font-bold">
+                  <option value="deepseek/deepseek-chat" className="bg-zinc-900 text-zinc-100">DeepSeek V3 / Chat [$0.14/1M]</option>
+                  <option value="meta-llama/llama-3.3-70b-instruct" className="bg-zinc-900 text-zinc-100">Meta Llama 3.3 70B [$0.40/1M]</option>
+                  <option value="qwen/qwen-2.5-72b-instruct" className="bg-zinc-900 text-zinc-100">Alibaba Qwen 2.5 72B [$0.35/1M]</option>
+                </optgroup>
+                <optgroup label="High Performance Models (OpenRouter Key)" className="bg-zinc-900 text-amber-400 font-bold">
+                  <option value="anthropic/claude-3.5-sonnet" className="bg-zinc-900 text-zinc-100">Anthropic Claude 3.5 Sonnet [$3.00/1M]</option>
+                  <option value="openai/gpt-4o" className="bg-zinc-900 text-zinc-100">OpenAI GPT-4o [$2.50/1M]</option>
+                </optgroup>
+                <optgroup label="Custom Model" className="bg-zinc-900 text-purple-400 font-bold">
                   <option value="custom" className="bg-zinc-900 text-zinc-100">Custom Model (Enter Ref)...</option>
                 </optgroup>
               </select>
