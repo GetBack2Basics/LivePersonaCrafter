@@ -187,13 +187,14 @@ export async function testModelAvailability(
   const startTime = Date.now();
   const cleanKey = userApiKey.trim();
   const isGeminiKey = cleanKey.startsWith('AIza');
-  const isOpenRouterKey = cleanKey.startsWith('sk-or-');
   const selectedProvider = localStorage.getItem('LPC_API_PROVIDER') || (isGeminiKey ? 'gemini' : 'openrouter');
-  const isGeminiModel = modelId.startsWith('gemini-') || (isGeminiKey && !isOpenRouterKey && (selectedProvider === 'gemini' || !modelId.includes('/')));
+  
+  // If user has a Gemini key (AIza...) or provider is gemini or model is direct gemini, test via Google Gemini API!
+  const isGeminiEndpoint = isGeminiKey || selectedProvider === 'gemini' || modelId.startsWith('gemini-');
 
-  if (isGeminiModel) {
-    let chosenModel = modelId.replace(/^(google\/|models\/)/i, '').trim();
-    if (!chosenModel || chosenModel.includes('/') || chosenModel.includes(':')) {
+  if (isGeminiEndpoint) {
+    let chosenModel = modelId.replace(/^(google\/|models\/)/i, '').replace(/:free$/i, '').trim();
+    if (!chosenModel || chosenModel.includes('/')) {
       chosenModel = 'gemini-1.5-flash';
     }
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${chosenModel}:generateContent?key=${cleanKey}`;
@@ -202,16 +203,31 @@ export async function testModelAvailability(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: 'ping' }] }],
-          generationConfig: { maxOutputTokens: 5 }
+          contents: [{ parts: [{ text: 'Hello' }] }],
+          generationConfig: { maxOutputTokens: 10 }
         })
       });
       const latencyMs = Date.now() - startTime;
       if (res.ok) {
         return { isAvailable: true, latencyMs };
       } else {
+        // If chosenModel failed on Gemini, try fallback gemini-1.5-flash
+        if (chosenModel !== 'gemini-1.5-flash') {
+          const fallbackUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${cleanKey}`;
+          const fallRes = await fetch(fallbackUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: 'Hello' }] }],
+              generationConfig: { maxOutputTokens: 10 }
+            })
+          });
+          if (fallRes.ok) {
+            return { isAvailable: true, latencyMs: Date.now() - startTime, fallbackModelId: 'gemini-1.5-flash' };
+          }
+        }
         const errNotice = res.status === 429 ? 'Rate Limited (HTTP 429)' : res.status === 404 ? 'Model Not Found (HTTP 404)' : `HTTP ${res.status}`;
-        return { isAvailable: false, latencyMs, errorNotice: `Gemini API model "${chosenModel}" returned ${errNotice}.`, fallbackModelId: 'gemini-1.5-flash' };
+        return { isAvailable: false, latencyMs, errorNotice: `Gemini API returned ${errNotice}`, fallbackModelId: 'gemini-1.5-flash' };
       }
     } catch (e: any) {
       return { isAvailable: false, latencyMs: Date.now() - startTime, errorNotice: `Network error: ${e?.message || 'Connection failed'}`, fallbackModelId: 'gemini-1.5-flash' };
@@ -230,8 +246,8 @@ export async function testModelAvailability(
         },
         body: JSON.stringify({
           model: openRouterModelId,
-          messages: [{ role: 'user', content: 'ping' }],
-          max_tokens: 5
+          messages: [{ role: 'user', content: 'Hello' }],
+          max_tokens: 15
         })
       });
       const latencyMs = Date.now() - startTime;
@@ -243,7 +259,7 @@ export async function testModelAvailability(
         return { 
           isAvailable: false, 
           latencyMs, 
-          errorNotice: `OpenRouter model "${openRouterModelId}" returned ${errNotice}.`,
+          errorNotice: `OpenRouter model "${openRouterModelId}" returned ${errNotice}`,
           fallbackModelId 
         };
       }

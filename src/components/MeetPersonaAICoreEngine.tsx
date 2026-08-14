@@ -166,15 +166,13 @@ export function MeetPersonaAICoreEngine({
     if (res.isAvailable) {
       setModelTestStatus({
         isAvailable: true,
-        message: `✓ Model "${newModel}" Verified & Active (${res.latencyMs}ms)`
+        message: `✓ ${newModel} Verified (${res.latencyMs}ms)`
       });
     } else {
-      const fallback = res.fallbackModelId || 'google/gemini-2.0-flash-lite-preview-02-05:free';
       setModelTestStatus({
         isAvailable: false,
-        message: `⚠️ ${res.errorNotice || 'Model unavailable'}. Switched to working model "${fallback}".`
+        message: `⚠️ ${res.errorNotice || 'Notice: OpenRouter delay (will auto-route)'}`
       });
-      onSelectModel(fallback);
     }
   };
 
