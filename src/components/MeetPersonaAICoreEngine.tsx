@@ -1296,15 +1296,8 @@ export function MeetPersonaAICoreEngine({
 
                       return (
                         <div key={response.responseId} className={`p-4 bg-indigo-950/30 border ${isLatest ? 'border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.2)]' : 'border-indigo-500/20 opacity-80'} rounded-xl space-y-3`}>
-                          {/* Topic being addressed */}
+                          {/* Response Meta Header Bar */}
                           <div className="p-3 bg-zinc-900 border border-indigo-500/40 rounded-xl flex items-center justify-between flex-wrap gap-2 shadow-inner">
-                            <div className="flex items-center gap-2">
-                              <HelpCircle className="w-4 h-4 text-indigo-400" />
-                              <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Topic being addressed:</span>
-                              <span className="text-xs font-extrabold text-indigo-200">
-                                {response.topicAddressed || 'Geospatial Engineering & Local Storage'}
-                              </span>
-                            </div>
                             <div className="flex items-center gap-2">
                               {response.modelUsed && (
                                 <span className="text-[11px] font-mono font-bold text-pink-300 bg-pink-950/60 px-2 py-0.5 rounded border border-pink-500/30">
